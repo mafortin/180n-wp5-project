@@ -1,4 +1,5 @@
 import os
+import argparse
 
 def replace_substring_in_filenames(directory, old_substring, new_substring):
     for root, dirs, files in os.walk(directory):
@@ -11,7 +12,6 @@ def replace_substring_in_filenames(directory, old_substring, new_substring):
                 print(f'Renamed: {old_file_path} -> {new_file_path}')
 
 if __name__ == "__main__":
-    import argparse
 
     parser = argparse.ArgumentParser(description='Replace a substring in filenames within a directory and its subfolders.')
     parser.add_argument('--dir', type=str, help='Path to the directory containing files to rename', required=True)
