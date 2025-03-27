@@ -24,12 +24,11 @@ def rename_files_in_subfolder(subfolder, sub_id, imagesTr_folder, labelsTr_folde
             json.dump(rename_mapping, jsonfile, indent=4)
 
     new_id = rename_mapping[sub_id]
-
     # Iterate over each file in the subfolder and rename
     for file_name in os.listdir(subfolder):
         old_file_path = os.path.join(subfolder, file_name)
 
-        # Determine the new file name and path based on modality or segmentation
+        # Determine the new file name and path based on modality
         if mods:
             for i, mod in enumerate(mods):
                 if mod in file_name:
@@ -37,14 +36,16 @@ def rename_files_in_subfolder(subfolder, sub_id, imagesTr_folder, labelsTr_folde
                     new_file_path = os.path.join(imagesTr_folder, new_file_name)
                     shutil.copy(old_file_path, new_file_path)
                     print(f'Copied: {old_file_path} -> {new_file_path}')
-        elif seg_id and any(label in file_name for label in seg_id):
-            new_file_name = f"image_{new_id}.nii.gz"
-            new_file_path = os.path.join(labelsTr_folder, new_file_name)
-            shutil.copy(old_file_path, new_file_path)
-            print(f'Copied: {old_file_path} -> {new_file_path}')
         else:
             new_file_name = f"image_{new_id}_0000.nii.gz"
             new_file_path = os.path.join(imagesTr_folder, new_file_name)
+            shutil.copy(old_file_path, new_file_path)
+            print(f'Copied: {old_file_path} -> {new_file_path}')
+
+        # Handle segmentation files separately
+        if seg_id and any(label in file_name for label in seg_id):
+            new_file_name = f"image_{new_id}.nii.gz"
+            new_file_path = os.path.join(labelsTr_folder, new_file_name)
             shutil.copy(old_file_path, new_file_path)
             print(f'Copied: {old_file_path} -> {new_file_path}')
 
@@ -69,7 +70,9 @@ def process_main_folder(main_folder, output_folder=None, segs=False, mods=None, 
         subfolder_path = os.path.join(main_folder, subfolder)
         if os.path.isdir(subfolder_path):
             sub_id = subfolder  # Use the subfolder name directly as the sub_id
+            print("--------STARTING PROCESSING SUBJECT %s--------" % sub_id)
             rename_files_in_subfolder(subfolder_path, sub_id, imagesTr_folder, labelsTr_folder, json_file_path, segs, mods, seg_id, change_ids)
+            print("--------DONE PROCESSING SUBJECT %s--------" % sub_id)
 
 if __name__ == "__main__":
 
