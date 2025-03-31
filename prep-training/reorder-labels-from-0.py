@@ -21,6 +21,8 @@ def main():
         args.output_dir = args.input_dir + '-reord'
     if not args.mapping_dir:
         args.mapping_dir = os.path.join(args.input_dir, 'labels_mapping')
+    if args.all2one:
+        args.json_name = "all2one"
 
     print(f"Input directory: {args.input_dir}")
     print(f"Output directory: {args.output_dir}")
