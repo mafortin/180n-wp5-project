@@ -56,9 +56,11 @@ def process_label_map(file_path, output_dir, json_name, mapping_dir=None, all2on
     print(f"Loaded {file_path}, shape: {data.shape}, dtype: {data.dtype}")
 
     if all2one:
+        # Get unique labels and create a mapping
+        unique_labels = list(map(int, np.unique(data)))  # Convert to standard Python integers
+        label_map = {old: (1 if old != 0 else 0) for old in unique_labels}
         # If all2one is enabled, map all labels except 0 to 1
         new_data = np.where(data > 0, 1, 0)
-        label_map = {0: 0, 1: 1}  # Define the mapping for all2one mode
         print(f"All-to-one mode enabled. All labels except 0 are set to 1.")
     else:
         # Get unique labels and create a mapping
