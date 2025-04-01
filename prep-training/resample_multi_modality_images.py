@@ -2,6 +2,7 @@ import os
 import argparse
 import SimpleITK as sitk
 import numpy as np
+import shutil
 
 def resample_image(ref_img_path, target_img_path, output_path):
     """Resamples target image to match the matrix size and spacing of reference image using SimpleITK."""
@@ -27,44 +28,84 @@ def find_matching_file(directory, substring):
             return os.path.join(directory, filename)
     return None
 
-def process_directory(input_dir, output_dir, ref_substring, resample_substring, process_method):
-    """Processes all subdirectories and applies the specified process (resample or coregister)."""
-    subdirs = sorted([d for d in os.listdir(input_dir) if os.path.isdir(os.path.join(input_dir, d))])
+def process_directory(input_dir, output_dir, ref_substring, resample_substring, process_method, single_dir=False):
 
-    for sub in subdirs:
-        sub_path = os.path.join(input_dir, sub)
-        output_sub_path = os.path.join(output_dir, sub)
-        os.makedirs(output_sub_path, exist_ok=True)  # Ensure output directory exists
+    """Processes the input directory, handling both subdirectories and single directory cases."""
+    if not single_dir and any(os.path.isdir(os.path.join(input_dir, d)) for d in os.listdir(input_dir)):
+        
+        # Case: Input directory contains subdirectories
+        subdirs = sorted([d for d in os.listdir(input_dir) if os.path.isdir(os.path.join(input_dir, d))])
 
-        print(f"[INFO] Processing subject: {sub}")
+        for sub in subdirs:
+            sub_path = os.path.join(input_dir, sub)
+            output_sub_path = os.path.join(output_dir, sub)
+            os.makedirs(output_sub_path, exist_ok=True)  # Ensure output directory exists
+
+            print(f"[INFO] Processing subject: {sub}")
+            print(f"[INFO] Selected process: {process_method}")
+
+            # Find reference and target images
+            ref_img_path = find_matching_file(sub_path, ref_substring)
+            target_img_path = find_matching_file(sub_path, resample_substring)
+
+            if not ref_img_path or not target_img_path:
+                print(f"[WARNING] Skipping {sub} (missing ref or target images)")
+                continue
+
+            # Copy reference image to output directory
+            ref_output_path = os.path.join(output_sub_path, os.path.basename(ref_img_path))
+            shutil.copy(ref_img_path, ref_output_path)
+            print(f"[INFO] Copied reference image: {os.path.basename(ref_img_path)} -> {os.path.basename(ref_output_path)}")
+
+            # Define output file name for the resampled image
+            output_path = os.path.join(output_sub_path, os.path.basename(target_img_path))
+
+            if process_method == "resample":
+                resample_image(ref_img_path, target_img_path, output_path)
+            elif process_method == "coregister":
+                print(f"[WARNING] Coregistration option is not yet implemented for {sub}")
+            else:
+                print(f"[ERROR] Invalid process method: {process_method}")
+   
+    else:
+        # Case: Input directory contains only files or single_dir flag is set
+        os.makedirs(output_dir, exist_ok=True)  # Ensure output directory exists
+
+        print(f"[INFO] Processing single directory: {input_dir}")
         print(f"[INFO] Selected process: {process_method}")
 
         # Find reference and target images
-        ref_img_path = find_matching_file(sub_path, ref_substring)
-        target_img_path = find_matching_file(sub_path, resample_substring)
+        ref_img_path = find_matching_file(input_dir, ref_substring)
+        target_img_path = find_matching_file(input_dir, resample_substring)
 
         if not ref_img_path or not target_img_path:
-            print(f"[WARNING] Skipping {sub} (missing ref or target images)")
-            continue
+            print(f"[WARNING] Skipping processing (missing ref or target images)")
+            return
 
-        # Define output file name
-        output_path = os.path.join(output_sub_path, os.path.basename(target_img_path))
+        # Copy reference image to output directory
+        ref_output_path = os.path.join(output_dir, os.path.basename(ref_img_path))
+        shutil.copy(ref_img_path, ref_output_path)
+        print(f"[INFO] Copied reference image: {os.path.basename(ref_img_path)} -> {os.path.basename(ref_output_path)}")
+
+        # Define output file name for the resampled image
+        output_path = os.path.join(output_dir, os.path.basename(target_img_path))
 
         if process_method == "resample":
             resample_image(ref_img_path, target_img_path, output_path)
         elif process_method == "coregister":
-            print(f"[WARNING] Coregistration option is not yet implemented for {sub}")
+            print(f"[WARNING] Coregistration option is not yet implemented")
         else:
             print(f"[ERROR] Invalid process method: {process_method}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process images for nnU-Net preprocessing.")
-    parser.add_argument("--input_dir", type=str, required=True, help="Path to the dataset directory containing subject subdirectories.")
+    parser.add_argument("--input_dir", type=str, required=True, help="Path to the dataset directory containing subject subdirectories or files.")
     parser.add_argument("--output_dir", type=str, default=None, help="Path to save processed images. Defaults to input_dir.")
     parser.add_argument("--ref_modality", type=str, required=True, help="Substring to identify reference image (e.g., '0000' for PET).")
     parser.add_argument("--resample_modality", type=str, required=True, help="Substring to identify modality to be resampled (e.g., '0001' for T2w).")
     parser.add_argument("--process", type=str, choices=["resample", "coregister"], required=True, help="Processing method: 'resample' (default) or 'coregister'.")
+    parser.add_argument("--single_dir", action="store_true", help="Flag to indicate that the input directory contains only files (no subdirectories).")
 
     args = parser.parse_args()
     output_directory = args.output_dir if args.output_dir else args.input_dir  # Default to input_dir if not provided
-    process_directory(args.input_dir, output_directory, args.ref_modality, args.resample_modality, args.process)
+    process_directory(args.input_dir, output_directory, args.ref_modality, args.resample_modality, args.process, args.single_dir)
