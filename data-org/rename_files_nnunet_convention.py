@@ -3,7 +3,7 @@ import json
 import argparse
 import shutil
 
-def rename_files_in_subfolder(subfolder, sub_id, imagesTr_folder, labelsTr_folder, json_file_path, segs=False, mods=None, seg_id=None, change_ids=False):
+def rename_files_in_subfolder(subfolder, sub_id, imagesTr_folder, labelsTr_folder, json_file_path, mods=None, seg_id=None, change_ids=False):
     
     # Check if the JSON file already exists
     if os.path.exists(json_file_path):
@@ -49,7 +49,7 @@ def rename_files_in_subfolder(subfolder, sub_id, imagesTr_folder, labelsTr_folde
             shutil.copy(old_file_path, new_file_path)
             print(f'Copied: {old_file_path} -> {new_file_path}')
 
-def process_main_folder(main_folder, output_folder=None, segs=False, mods=None, seg_id=None, change_ids=False):
+def process_main_folder(main_folder, output_folder=None, mods=None, seg_id=None, change_ids=False):
     # If output folder is not provided, use the same as the input folder
     if output_folder is None:
         output_folder = main_folder
@@ -58,8 +58,8 @@ def process_main_folder(main_folder, output_folder=None, segs=False, mods=None, 
     os.makedirs(output_folder, exist_ok=True)
 
     # Create output folders if they don't exist
-    imagesTr_folder = os.path.join(output_folder, 'imagesTr')
-    labelsTr_folder = os.path.join(output_folder, 'labelsTr')
+    imagesTr_folder = os.path.join(output_folder, 'images')
+    labelsTr_folder = os.path.join(output_folder, 'labels')
     os.makedirs(imagesTr_folder, exist_ok=True)
     os.makedirs(labelsTr_folder, exist_ok=True)
 
@@ -71,18 +71,19 @@ def process_main_folder(main_folder, output_folder=None, segs=False, mods=None, 
         if os.path.isdir(subfolder_path):
             sub_id = subfolder  # Use the subfolder name directly as the sub_id
             print("--------STARTING PROCESSING SUBJECT %s--------" % sub_id)
-            rename_files_in_subfolder(subfolder_path, sub_id, imagesTr_folder, labelsTr_folder, json_file_path, segs, mods, seg_id, change_ids)
+            rename_files_in_subfolder(subfolder_path, sub_id, imagesTr_folder, labelsTr_folder, json_file_path, mods, seg_id, change_ids)
             print("--------DONE PROCESSING SUBJECT %s--------" % sub_id)
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Rename files in subfolders and save the correspondence to a JSON file.')
-    parser.add_argument('--input_folder', type=str, help='Path to the main folder containing subfolders with files to rename', required=True)
-    parser.add_argument('--output_folder', type=str, help='Path to the output folder to save the renamed files and JSON file')
-    parser.add_argument('--segs', action='store_true', help='Flag indicating that the files to rename are label maps and should not have the _0000 suffix')
-    parser.add_argument('--mod', nargs='+', help='List of substrings to identify each modality')
+    parser.add_argument('--input_dir', type=str, help='Path to the main folder containing subfolders with files to rename', required=True)
+    parser.add_argument('--output_dir', type=str, help='Path to the output folder to save the renamed files and JSON file')
+    #parser.add_argument('--segs', action='store_true', help='Flag indicating that the files to rename are label maps and should not have the _0000 suffix')
+    parser.add_argument('--mod', type=str, help='List of substrings to identify each modality (comma-separated).')
     parser.add_argument('--seg_id', nargs='+', help='List of substrings to identify segmentations/label maps')
     parser.add_argument('--change_ids', action='store_true', help='Flag indicating whether to change subject IDs')
     args = parser.parse_args()
 
-    process_main_folder(args.input_folder, args.output_folder, args.segs, args.mod, args.seg_id, args.change_ids)
+    mods = args.mod.split(',') if args.mod else None
+    process_main_folder(args.input_dir, args.output_dir, mods, args.seg_id, args.change_ids)
