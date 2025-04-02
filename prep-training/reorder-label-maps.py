@@ -14,11 +14,13 @@ def main():
     parser.add_argument('--mapping_dir', type=str, help="Path to the directory to save label mappings. If not provided, mappings will not be saved.")
     parser.add_argument('--json_name', type=str, required=False, default="aseg2linear", help="Suffix for the JSON label conversion files.")
     parser.add_argument('--all2one', action='store_true', help="If set, all labels except 0 are set to 1.")
+    parser.add_argument('--recursive', action='store_true', help="If set, process subdirectories recursively.")
+    parser.add_argument('--label_map_id', default="_LYM_label.nii.gz", choices=["_LYM_label.nii.gz", "aseg.nii.gz", "Segmentation.nii.gz"], help="Pattern to extract the correct label map file from the filenames.")
     args = parser.parse_args()
 
     # Derive output_dir and mapping_dir from input_dir if they are not provided
     if not args.output_dir:
-        args.output_dir = args.input_dir + '-reord'
+        args.output_dir = args.input_dir
     if not args.mapping_dir:
         args.mapping_dir = os.path.join(args.input_dir, 'labels_mapping')
     if args.all2one:
@@ -28,9 +30,11 @@ def main():
     print(f"Output directory: {args.output_dir}")
     print(f"Mapping directory: {args.mapping_dir}")
     print(f"JSON name prefix: {args.json_name}")
+    print(f"Label map ID: {args.label_map_id}")
     print(f"All-to-one mode: {args.all2one}")
+    print(f"Recursive mode: {args.recursive}")
 
-    process_directory(args.input_dir, args.output_dir, args.json_name, args.mapping_dir, args.all2one)
+    process_directory(args.input_dir, args.output_dir, args.json_name, args.mapping_dir, args.all2one, args.recursive, args.label_map_id)
     print("Done processing label values and saving label mappings.")
 
 def save_labels(mapping, json_name, mapping_dir, file_basename):
@@ -43,7 +47,7 @@ def save_labels(mapping, json_name, mapping_dir, file_basename):
         json.dump(mapping, mapping_file)
     print(f"Labels conversion saved to {mapping_file_path}")
 
-def process_label_map(file_path, output_dir, json_name, mapping_dir=None, all2one=False):
+def process_label_map(file_path, output_dir, json_name, mapping_dir=None, all2one=False, input_dir=None):
 
     # Load the label map file
     img = nib.load(file_path)
@@ -84,22 +88,25 @@ def process_label_map(file_path, output_dir, json_name, mapping_dir=None, all2on
 
     # Save the new label map file
     new_img = nib.Nifti1Image(new_data, img.affine, img.header)
-    new_file_path = os.path.join(output_dir, os.path.basename(file_path))
+    new_file_path = os.path.join(output_dir, os.path.relpath(file_path, start=input_dir))
+    os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
     nib.save(new_img, new_file_path)
     print(f"Processed {file_path} -> {new_file_path}")
 
-def process_directory(input_dir, output_dir, json_name, mapping_dir=None, all2one=False):
+def process_directory(input_dir, output_dir, json_name, mapping_dir=None, all2one=False, recursive=False, label_map_id="_LYM_label.nii.gz"):
     # Ensure the output and mapping directories exist
     os.makedirs(output_dir, exist_ok=True)
     if mapping_dir:
         os.makedirs(mapping_dir, exist_ok=True)
 
-    # Process each .nii.gz file in the input directory
-    for filename in os.listdir(input_dir):
-        if filename.endswith('.nii.gz'):
-            file_path = os.path.join(input_dir, filename)
-            process_label_map(file_path, output_dir, json_name, mapping_dir, all2one)
+    # Walk through the directory
+    for root, _, files in os.walk(input_dir):
+        for filename in files:
+            if label_map_id in filename and filename.endswith('.nii.gz'):
+                file_path = os.path.join(root, filename)
+                process_label_map(file_path, output_dir, json_name, mapping_dir, all2one, input_dir=input_dir)
+        if not recursive:
+            break
 
 if __name__ == "__main__":
     main()
-
