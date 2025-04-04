@@ -18,12 +18,12 @@ def main():
         for plan in args.plans:
             for trainer in args.trainer:
                 for fold in range(start_fold, 5):
-                    run_training(dataset, args.configuration, trainer, fold, plan, args.debug)
+                    run_training(dataset, args.configuration, trainer, fold, plan, args.debug, args.data_load_issue)
 
     print("All trainings have been completed.")
 
 def run_training(dataset, configuration, trainer, fold, plan, debug=False):
-
+        
     command = ["nnUNetv2_train", dataset, configuration, str(fold), "--npz", "-p", plan, "-tr", trainer, "--val_best"]
     print('|')
     print(f"Executing command: {' '.join(command)}")
