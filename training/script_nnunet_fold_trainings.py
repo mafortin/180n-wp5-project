@@ -18,7 +18,7 @@ def main():
         for plan in args.plans:
             for trainer in args.trainer:
                 for fold in range(start_fold, 5):
-                    run_training(dataset, args.configuration, trainer, fold, plan, args.debug, args.data_load_issue)
+                    run_training(dataset, args.configuration, trainer, fold, plan, args.debug)
 
     print("All trainings have been completed.")
 
