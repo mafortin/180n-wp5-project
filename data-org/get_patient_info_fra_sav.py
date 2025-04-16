@@ -19,8 +19,19 @@ if __name__ == "__main__":
 
 
     df, meta = read_sav(args.input_sav)
-    print("Dataframe extracted from the SAV file: ", df)
     print("---------------------------------------------------------")
-    print("Meta information extracted from the SAV file: ", meta)
+    print("Dataframe extracted from the SAV file (first 10x10): ")
+    print(df.iloc[:10, :10])
+    print("---------------------------------------------------------")
+    print("Relevant meta information extracted from the SAV file: ")
+    print("---------------------------------------------------------")
+    #print("Column names: ", meta.column_names)
+    print("Number of columns: ", meta.number_columns)
+    print("---------------------------------------------------------")
+    print("Number of rows: ", meta.number_rows)
+    print("---------------------------------------------------------")
+    print("Patient IDs :", df.Patient_ID.unique())
+    print("---------------------------------------------------------")
+    print("Total number of patients: ", len(df.Patient_ID.unique()))
     print("---------------------------------------------------------")
 
