@@ -1,5 +1,6 @@
 import subprocess
 import argparse
+import torch
 
 def main():
     parser = argparse.ArgumentParser(description="Automate nnUNetv2 training for multiple datasets, configurations, and plans.")
@@ -40,10 +41,12 @@ def run_training(dataset, configuration, trainer, fold, plan, debug=False):
             print(f"Finished training for dataset {dataset}, configuration {configuration}, fold {fold}, plan {plan}")
             print('||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||')
             print(result.stdout)
+            torch.cuda.empty_cache()
         except subprocess.CalledProcessError as e:
             print('||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||')
             print(f"~~~~~~!!!!!!!!!!!Training for dataset {dataset}, configuration {configuration}, fold {fold}, plan {plan} FAILED with error: {e.stderr}!!!!!!!!!!!!~~~~~~~")
             print('||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||')
+            torch.cuda.empty_cache()
 
 if __name__ == "__main__":
     main()
