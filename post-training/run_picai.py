@@ -8,16 +8,14 @@ def main():
     parser = argparse.ArgumentParser(description="Run PICAI evaluation and generate metrics.")
     parser.add_argument("--path2preds", required=True, help="Path to the predictions folder.")
     parser.add_argument("--path2gt", required=True, help="Path to the ground truth folder.")
-    parser.add_argument("--img_ext", default=".nii.gz", help="Image file extension (default: .nii.gz).")
+    #parser.add_argument("--img_ext", type=str, help="Image file extension (default: .nii.gz).")
     parser.add_argument("--path2json", required=True, help="Path to save the metrics JSON file.")
     args = parser.parse_args()
 
     # Run PICAI evaluation
     metrics = evaluate_folder(
         y_det_dir=args.path2preds,
-        y_true_dir=args.path2gt,
-        pred_extensions=args.img_ext,
-        imlabel_extensions=args.img_ext
+        y_true_dir=args.path2gt
     )
 
     # Save the full metrics to a JSON file
