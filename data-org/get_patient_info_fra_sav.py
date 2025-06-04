@@ -56,10 +56,13 @@ if __name__ == "__main__":
                     print("These columns will be excluded from the extraction: ")
                     print(valid_columns)
                 else:
+
                     new_df = df[valid_columns]
-                
-                print("New dataframe with selected columns (first 10 rows): ")
-                print(new_df.head(10))
+                    # Drop rows where the relevant column (defined by the user) is NaN
+                    new_df_filtered = new_df.dropna(subset=[col for col in valid_columns if col not in ['Patient_ID', 'Type']])
+
+                print("New dataframe with selected non-empty columns: ")
+                print(new_df_filtered) #new_df.head(10)
                 print("---------------------------------------------------------")
             except KeyError as e:
                 print(f"Error: One or more columns specified do not exist in the dataframe. {e}")
