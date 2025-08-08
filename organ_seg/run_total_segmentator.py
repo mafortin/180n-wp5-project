@@ -61,12 +61,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run TotalSegmentator on all NIfTI files in a directory or subdirectories.")
     parser.add_argument("-i", "--input", required=True, help="Input directory containing all images or subdirectories with images to be segmented.")
     parser.add_argument("-o", "--output", required=True, help="Output directory where all the label maps will be saved.")
-    parser.add_argument("-t", "--task", default="total_mr", help="Task to run (default: total_mr). Other options: body_mr.")
-    parser.add_argument("--one", action="store_true", help="Create one final output label map with all labels.")
+    parser.add_argument("-t", "--task", default="total_mr", help="Task to run for the main segmentation (default: total_mr).")
+    parser.add_argument("--one", action="store_true", help="Create one final output label map with all labels (instead of N label maps for all labels individually).")
     parser.add_argument("-l", "--labels", nargs="+", default=None, help="List of labels to segment.")
-    parser.add_argument("-s", "--suffix", default="_oseg", help="Suffix to add before the file extension for output files.")
+    parser.add_argument("-s", "--suffix", default="_oseg", help="Suffix to add before the file extension for output files. If you don't do anything special, keep the default.")
     parser.add_argument("--subdirs", action="store_true", help="Search for images in subdirectories. Uses subdirectory name as subject ID.")
     parser.add_argument("--filter", type=str, help="Only segment files containing this substring in their filename.")
+    parser.add_argument("--no_body_mr", action="store_true", help="Do not run the additional body_mr segmentation.")
 
     args = parser.parse_args()
 
@@ -80,7 +81,7 @@ if __name__ == "__main__":
         print("Creating one final output label map with all labels.")
     else:
         print("Creating one output label map per structure segmented.")
-        print("Note: This is urrently not supported with the current implementation nor advised due to the creation of 50 files per segmented image.")
+        print("Note: This is currently not supported with the current implementation nor advised due to the creation of 50 files per segmented image.")
 
     os.makedirs(args.output, exist_ok=True)
 
@@ -93,8 +94,6 @@ if __name__ == "__main__":
     else:
         paths = glob.glob(os.path.join(args.input, "*.nii")) + glob.glob(os.path.join(args.input, "*.nii.gz"))
         nii_files = [(path, None) for path in paths if filename_matches_filter(path, args.filter)]
-
-
 
     if not nii_files:
         print("No .nii or .nii.gz files found.")
@@ -111,7 +110,18 @@ if __name__ == "__main__":
         else:
             output_file = get_output_filename(nii_file, args.output, args.suffix)
 
-        print(f"Processing {nii_file} -> {output_file}")
+        # Run main task (total_mr by default)
+        print(f"Processing {nii_file} -> {output_file} with task {args.task}")
         run_total_segmentator(nii_file, output_file, args.task, args.one, args.labels)
+
+        # Run additional body_mr unless disabled
+        if not args.no_body_mr:
+            body_suffix = "_body"
+            if sub_id is not None and args.subdirs:
+                output_file_body = get_output_filename(nii_file, output_subdir, body_suffix)
+            else:
+                output_file_body = get_output_filename(nii_file, args.output, body_suffix)
+            print(f"Processing {nii_file} -> {output_file_body} with task body_mr")
+            run_total_segmentator(nii_file, output_file_body, "body_mr", args.one, args.labels)
 
     print("TotalSegmentator run completed successfully.")

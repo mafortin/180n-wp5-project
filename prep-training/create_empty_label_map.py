@@ -3,8 +3,6 @@ import argparse
 import nibabel as nib
 import numpy as np
 
-#!/usr/bin/env python3
-
 
 def create_empty_label_map(input_dir, reference_filename, output_filename):
     # Loop through all subdirectories in the input directory
