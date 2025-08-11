@@ -36,8 +36,9 @@ def get_pet_path(mask_path):
     
 
 
-def analyze_lesions(label_map_path, save_instances=False, mask_pattern="_LYM_label.nii.gz",
-                    anat_pattern="_all.nii.gz"):
+def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_label.nii.gz",
+                    anat_pattern="total_mr.nii.gz", topn=5):
+
     # Load lesion mask
     img = nib.load(label_map_path)
     data = img.get_fdata().astype(np.uint8)
@@ -48,7 +49,11 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="_LYM_lab
 
     # Save instances if requested
     if save_instances:
-        inst_path = label_map_path.replace(mask_pattern, mask_pattern.replace(".nii.gz", "_inst.nii.gz"))
+        
+        base = os.path.splitext(os.path.splitext(label_map_path)[0])[0]  # removes .nii.gz
+        inst_path = base + "_inst.nii.gz"
+        print(f"Saving instance segmentation to: {inst_path}") 
+         
         nib.save(nib.Nifti1Image(labeled_array, img.affine, img.header), inst_path)
 
     # Try loading PET image
@@ -142,6 +147,25 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="_LYM_lab
             "organ3_name": organ_info[2][0], "organ3_pct": organ_info[2][1]
         })
 
+    # Print top-N largest lesions
+    top_n = sorted(lesions_info, key=lambda x: x["volume_ml"], reverse=True)[:topn]
+    n_lesions = len(lesions_info)
+    print(f"\nTop {topn} largest lesions (on a total of {n_lesions} individual lesions detected):")
+    for lesion in top_n:
+        organs = []
+
+        for i in range(1, 4):
+            name = lesion[f"organ{i}_name"]
+            pct = lesion[f"organ{i}_pct"]
+            if name != "None" and pct > 1.0:
+                organs.append(f"{name} ({pct}%)")
+
+        organs_str = ", ".join(organs) if organs else "No significant overlap"
+
+        print(f"- Lesion {lesion['lesion_id']}: Volume = {lesion['volume_ml']:.2f} mL, "
+            f"SUV_95% = {lesion['SUV_95percentile']:.0f}, Organs = {organs_str}")
+
+
     return lesions_info
 
 def find_label_maps(input_path, pattern, onedir=False):
@@ -160,6 +184,7 @@ def main():
     parser.add_argument("--pattern", default="LYM_label.nii.gz", help="Substring to match label maps.")
     parser.add_argument("--anat_pattern", default="_all.nii.gz", help="Substring to match anatomy segmentation.")
     parser.add_argument("--onedir", action="store_true", help="Only search the provided directory, not subfolders.")
+    parser.add_argument("--topn", type=int, default=5, help="Number of largest lesions to print summary for.")
     parser.add_argument("--save", action="store_true", help="Save instance label maps.")
     args = parser.parse_args()
 
@@ -171,7 +196,10 @@ def main():
     for lm in label_maps:
         print(f"Processing: {lm}")
         lesions_info = analyze_lesions(lm, save_instances=args.save,
-                                       mask_pattern=args.pattern, anat_pattern=args.anat_pattern)
+                               mask_pattern=args.pattern,
+                               anat_pattern=args.anat_pattern,
+                               topn=args.topn)
+
         
         base = os.path.splitext(os.path.splitext(lm)[0])[0]  # removes .nii.gz
         csv_path = base + "_lesion_stats.csv"
