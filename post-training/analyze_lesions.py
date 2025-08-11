@@ -6,22 +6,65 @@ import numpy as np
 import csv
 from scipy.ndimage import label
 
-# Organ label mapping
-ALL_MR_LABELS = {
-    1: "spleen", 2: "kidney_right", 3: "kidney_left", 4: "gallbladder", 5: "liver",
-    6: "stomach", 7: "pancreas", 8: "adrenal_gland_right", 9: "adrenal_gland_left",
-    10: "lung_left", 11: "lung_right", 12: "esophagus", 13: "small_bowel", 14: "duodenum",
-    15: "colon", 16: "urinary_bladder", 17: "prostate", 18: "sacrum", 19: "vertebrae",
-    20: "intervertebral_discs", 21: "spinal_cord", 22: "heart", 23: "aorta",
-    24: "inferior_vena_cava", 25: "portal_vein_and_splenic_vein", 26: "iliac_artery_left",
-    27: "iliac_artery_right", 28: "iliac_vena_left", 29: "iliac_vena_right",
-    30: "humerus_left", 31: "humerus_right", 32: "scapula_left", 33: "scapula_right",
-    34: "clavicula_left", 35: "clavicula_right", 36: "femur_left", 37: "femur_right",
-    38: "hip_left", 39: "hip_right", 40: "gluteus_maximus_left", 41: "gluteus_maximus_right",
-    42: "gluteus_medius_left", 43: "gluteus_medius_right", 44: "gluteus_minimus_left",
-    45: "gluteus_minimus_right", 46: "autochthon_left", 47: "autochthon_right",
-    48: "iliopsoas_left", 49: "iliopsoas_right", 50: "brain", 101: "trunc", 102: "extremities"
+# Organ label mapping with anatomical metadata:
+# Format: label_id: (organ_name, above_diaphragm_flag, laterality)
+ALL_MR_LABELS_INFO = {
+    1:  ("spleen", 1, "left"),
+    2:  ("kidney_right", 0, "right"),
+    3:  ("kidney_left", 0, "left"),
+    4:  ("gallbladder", 1, "right"),
+    5:  ("liver", 1, "right"),
+    6:  ("stomach", 1, "left"),
+    7:  ("pancreas", 1, "left"),
+    8:  ("adrenal_gland_right", 1, "right"),
+    9:  ("adrenal_gland_left", 1, "left"),
+    10: ("lung_left", 1, "left"),
+    11: ("lung_right", 1, "right"),
+    12: ("esophagus", 1, "NA"),
+    13: ("small_bowel", 0, "NA"),
+    14: ("duodenum", 0, "NA"),
+    15: ("colon", 0, "NA"),
+    16: ("urinary_bladder", 0, "NA"),
+    17: ("prostate", 0, "NA"),
+    18: ("sacrum", 0, "NA"),
+    19: ("vertebrae", 0, "NA"),
+    20: ("intervertebral_discs", 0, "NA"),
+    21: ("spinal_cord", 1, "NA"),
+    22: ("heart", 1, "NA"),
+    23: ("aorta", 1, "NA"),
+    24: ("inferior_vena_cava", 1, "NA"),
+    25: ("portal_vein_and_splenic_vein", 1, "NA"),
+    26: ("iliac_artery_left", 0, "left"),
+    27: ("iliac_artery_right", 0, "right"),
+    28: ("iliac_vena_left", 0, "left"),
+    29: ("iliac_vena_right", 0, "right"),
+    30: ("humerus_left", 1, "left"),
+    31: ("humerus_right", 1, "right"),
+    32: ("scapula_left", 1, "left"),
+    33: ("scapula_right", 1, "right"),
+    34: ("clavicula_left", 1, "left"),
+    35: ("clavicula_right", 1, "right"),
+    36: ("femur_left", 0, "left"),
+    37: ("femur_right", 0, "right"),
+    38: ("hip_left", 0, "left"),
+    39: ("hip_right", 0, "right"),
+    40: ("gluteus_maximus_left", 0, "left"),
+    41: ("gluteus_maximus_right", 0, "right"),
+    42: ("gluteus_medius_left", 0, "left"),
+    43: ("gluteus_medius_right", 0, "right"),
+    44: ("gluteus_minimus_left", 0, "left"),
+    45: ("gluteus_minimus_right", 0, "right"),
+    46: ("autochthon_left", 0, "left"),
+    47: ("autochthon_right", 0, "right"),
+    48: ("iliopsoas_left", 0, "left"),
+    49: ("iliopsoas_right", 0, "right"),
+    50: ("brain", 1, "NA"),
+    101: ("trunc", None, "NA"),
+    102: ("extremities", None, "NA"),
 }
+
+# Keep the original simple mapping if needed elsewhere in the code
+ALL_MR_LABELS = {k: v[0] for k, v in ALL_MR_LABELS_INFO.items()}
 
 def get_pet_path(mask_path):
     print("Determining PET image path...")
@@ -146,7 +189,7 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
             if name != "None" and pct > 1.0:
                 organs.append(f"{name} ({pct}%)")
         organs_str = ", ".join(organs) if organs else "No significant overlap"
-        print(f"- Lesion {lesion['lesion_id']}: Volume = {lesion['volume_ml']:.2f} mL, SUV_95% = {lesion['SUV_95percentile']:.0f}, Organs = {organs_str}")
+        print(f"- Lesion {lesion['lesion_id']}: Volume = {lesion['volume_ml']:.2f} mL, Organs = {organs_str}, SUV_95% = {lesion['SUV_95percentile']:.0f}")
 
     return lesions_info
 
