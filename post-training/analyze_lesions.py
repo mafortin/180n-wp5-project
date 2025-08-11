@@ -24,50 +24,43 @@ ALL_MR_LABELS = {
 }
 
 def get_pet_path(mask_path):
+    print("Determining PET image path...")
     base_dir = os.path.dirname(mask_path)
-    fname_noext = os.path.splitext(os.path.splitext(os.path.basename(mask_path))[0])[0]  # remove .nii.gz
-    # Keep everything up to the first occurrence of "_LYM"
+    fname_noext = os.path.splitext(os.path.splitext(os.path.basename(mask_path))[0])[0]
     if "_LYM" in fname_noext:
         subj_prefix = fname_noext.split("_LYM")[0]
         return os.path.join(base_dir, f"{subj_prefix}_LYM.nii.gz")
     else:
-        # If "_LYM" not found, fallback: just replace extension
         return os.path.join(base_dir, fname_noext + "_LYM.nii.gz")
-    
-
 
 def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_label.nii.gz",
                     anat_pattern="total_mr.nii.gz", topn=5):
 
-    # Load lesion mask
+    print(f"\nLoading lesion mask: {label_map_path}")
     img = nib.load(label_map_path)
     data = img.get_fdata().astype(np.uint8)
 
-    # Instance segmentation
+    print("Performing instance segmentation...")
     struct = np.ones((3, 3, 3), dtype=np.uint8)
     labeled_array, num_features = label(data, structure=struct)
+    print(f"Found {num_features} lesion instances.")
 
-    # Save instances if requested
     if save_instances:
-        
-        base = os.path.splitext(os.path.splitext(label_map_path)[0])[0]  # removes .nii.gz
+        base = os.path.splitext(os.path.splitext(label_map_path)[0])[0]
         inst_path = base + "_inst.nii.gz"
-        print(f"Saving instance segmentation to: {inst_path}") 
-         
+        print(f"Saving instance segmentation to: {inst_path}")
         nib.save(nib.Nifti1Image(labeled_array, img.affine, img.header), inst_path)
 
-    # Try loading PET image
     pet_path = get_pet_path(label_map_path)
     if os.path.exists(pet_path):
+        print(f"Loading PET image: {pet_path}")
         pet_img = nib.load(pet_path)
         pet_data = pet_img.get_fdata()
     else:
         print(f"WARNING: PET image not found for {label_map_path}. SUV metrics will be skipped.")
         pet_data = None
 
-
-
-    # Load anatomy segmentation if available
+    print("Searching for anatomy segmentation...")
     anat_path = None
     for f in os.listdir(os.path.dirname(label_map_path)):
         if "_all.nii.gz" in f:
@@ -76,21 +69,21 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
 
     anat_data = None
     if anat_path and os.path.exists(anat_path):
+        print(f"Loading anatomy segmentation: {anat_path}")
         anat_img = nib.load(anat_path)
         anat_data = anat_img.get_fdata().astype(int)
     else:
         print(f"WARNING: Anatomy segmentation not found for {label_map_path}")
 
-
     voxel_volume_ml = np.prod(img.header.get_zooms()) / 1000.0
     lesions_info = []
 
+    print("Analyzing individual lesions...")
     for lesion_id in range(1, num_features + 1):
         lesion_mask = (labeled_array == lesion_id)
         voxel_count = np.sum(lesion_mask)
         volume_ml = voxel_count * voxel_volume_ml
 
-        # PET stats
         if pet_data is not None:
             suv_values = pet_data[lesion_mask]
             suv_max = float(np.max(suv_values))
@@ -99,8 +92,6 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
         else:
             suv_max = suv_mean = suv_95p = 0.0
 
-
-        # Organ overlap
         organ_info = [("None", 0.0), ("None", 0.0), ("None", 0.0)]
         if anat_data is not None:
             lesion_organs_raw, counts_raw = np.unique(anat_data[lesion_mask], return_counts=True)
@@ -108,9 +99,8 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
             lesion_organs = lesion_organs_raw[mask]
             counts = counts_raw[mask]
 
-
             if len(lesion_organs) == 0:
-                print(f"WARNING: Lesion {lesion_id} in {os.path.basename(label_map_path)} has no overlap with any organ label.")
+                print(f"WARNING: Lesion {lesion_id} has no overlap with any organ label.")
             else:
                 total_vox = np.sum(counts)
                 percents = (counts / total_vox) * 100
@@ -121,16 +111,15 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
                 top_n = min(3, len(lesion_organs))
                 organ_info = []
                 for i in range(top_n):
-                    organ_name = ALL_MR_LABELS.get(int(lesion_organs[i]), "unknown")
+                    label_id = int(round(lesion_organs[i]))
+                    organ_name = ALL_MR_LABELS.get(label_id, f"unknown_label_{label_id}")
                     organ_info.append((organ_name, round(float(percents[i]), 2)))
                 while len(organ_info) < 3:
                     organ_info.append(("None", 0.0))
 
                 if organ_info[0][1] < 50.0:
-                    print(f"WARNING: Lesion {lesion_id} in {os.path.basename(label_map_path)} "
-                          f"has no single organ covering >50% (top={organ_info[0][0]}, {organ_info[0][1]}%).")
+                    print(f"WARNING: Lesion {lesion_id} has no single organ covering >50% (top={organ_info[0][0]}, {organ_info[0][1]}%).")
 
-                # Fully inside one organ -> zero out others
                 if organ_info[0][1] == 100.0:
                     organ_info[1] = ("None", 0.0)
                     organ_info[2] = ("None", 0.0)
@@ -147,28 +136,22 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
             "organ3_name": organ_info[2][0], "organ3_pct": organ_info[2][1]
         })
 
-    # Print top-N largest lesions
+    print(f"\nTop {topn} largest lesions (out of {len(lesions_info)} total):")
     top_n = sorted(lesions_info, key=lambda x: x["volume_ml"], reverse=True)[:topn]
-    n_lesions = len(lesions_info)
-    print(f"\nTop {topn} largest lesions (on a total of {n_lesions} individual lesions detected):")
     for lesion in top_n:
         organs = []
-
         for i in range(1, 4):
             name = lesion[f"organ{i}_name"]
             pct = lesion[f"organ{i}_pct"]
             if name != "None" and pct > 1.0:
                 organs.append(f"{name} ({pct}%)")
-
         organs_str = ", ".join(organs) if organs else "No significant overlap"
-
-        print(f"- Lesion {lesion['lesion_id']}: Volume = {lesion['volume_ml']:.2f} mL, "
-            f"SUV_95% = {lesion['SUV_95percentile']:.0f}, Organs = {organs_str}")
-
+        print(f"- Lesion {lesion['lesion_id']}: Volume = {lesion['volume_ml']:.2f} mL, SUV_95% = {lesion['SUV_95percentile']:.0f}, Organs = {organs_str}")
 
     return lesions_info
 
 def find_label_maps(input_path, pattern, onedir=False):
+    print(f"Searching for label maps in: {input_path}")
     if onedir:
         return [os.path.join(input_path, f) for f in os.listdir(input_path) if pattern in f]
     matches = []
@@ -176,6 +159,7 @@ def find_label_maps(input_path, pattern, onedir=False):
         for f in files:
             if pattern in f:
                 matches.append(os.path.join(root, f))
+    print(f"Found {len(matches)} label maps.")
     return matches
 
 def main():
@@ -194,16 +178,15 @@ def main():
         return
 
     for lm in label_maps:
-        print(f"Processing: {lm}")
+        print(f"\n--- Processing: {lm} ---")
         lesions_info = analyze_lesions(lm, save_instances=args.save,
-                               mask_pattern=args.pattern,
-                               anat_pattern=args.anat_pattern,
-                               topn=args.topn)
+                                       mask_pattern=args.pattern,
+                                       anat_pattern=args.anat_pattern,
+                                       topn=args.topn)
 
-        
-        base = os.path.splitext(os.path.splitext(lm)[0])[0]  # removes .nii.gz
+        base = os.path.splitext(os.path.splitext(lm)[0])[0]
         csv_path = base + "_lesion_stats.csv"
-
+        print(f"Saving lesion statistics to: {csv_path}")
         with open(csv_path, "w", newline="") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=[
                 "lesion_id", "voxel_count", "volume_ml",
