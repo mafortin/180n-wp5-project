@@ -159,7 +159,7 @@ def find_label_maps(input_path, pattern, onedir=False):
         for f in files:
             if pattern in f:
                 matches.append(os.path.join(root, f))
-    print(f"Found {len(matches)} label maps.")
+    print(f"Found {len(matches)} label maps to process inside .")
     return matches
 
 def main():
@@ -178,7 +178,15 @@ def main():
         return
 
     for lm in label_maps:
-        print(f"\n--- Processing: {lm} ---")
+        if args.onedir:
+            # Subject ID is the prefix before the first underscore in the filename
+            subject_id = os.path.basename(lm).split("_")[0]
+        else:
+            # Subject ID is the name of the subdirectory
+            subject_id = os.path.basename(os.path.dirname(lm))
+
+        print(f"\n--- Processing subject: {subject_id} ---")
+
         lesions_info = analyze_lesions(lm, save_instances=args.save,
                                        mask_pattern=args.pattern,
                                        anat_pattern=args.anat_pattern,
@@ -195,6 +203,9 @@ def main():
             ])
             writer.writeheader()
             writer.writerows(lesions_info)
+
+        print(f"Finished processing subject: {subject_id}")
+
 
 if __name__ == "__main__":
     main()
