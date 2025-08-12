@@ -77,9 +77,35 @@ def get_pet_path(mask_path):
         return os.path.join(base_dir, fname_noext + "_LYM.nii.gz")
     
 
+def classify_lesion_position(organ_names):
+    """
+    Classifies lesion position as above/below diaphragm and left/right
+    based on organ overlap.
+
+    organ_names: list of up to 3 organ names in order of overlap importance.
+
+    Returns:
+        above_diaphragm: 1 (above), 0 (below), None (spans or unknown)
+        laterality: "left", "right", "NA" (midline), or "unknown"
+    """
+    fallback_organs = [name for name in organ_names if name not in ("trunc", "extremities", "None")]
+
+    if not fallback_organs:
+        return None, "unknown"  # No useful organ overlap
+
+    # Find the first valid organ in the label mapping
+    for organ in fallback_organs:
+        label_id = next((k for k, v in ALL_MR_LABELS.items() if v == organ), None)
+        if label_id is not None:
+            above_flag, side = ALL_MR_LABELS_INFO[label_id][1], ALL_MR_LABELS_INFO[label_id][2]
+            return above_flag, side
+
+    return None, "unknown"
+
+
 
 def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_label.nii.gz",
-                    anat_pattern="total_mr.nii.gz", topn=5):
+                    anat_pattern="_all.nii.gz", topn=5):
 
     print(f"\nLoading lesion mask: {label_map_path}")
     img = nib.load(label_map_path)
@@ -96,6 +122,7 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
         print(f"Saving instance segmentation to: {inst_path}")
         nib.save(nib.Nifti1Image(labeled_array, img.affine, img.header), inst_path)
 
+    # Load PET image
     pet_path = get_pet_path(label_map_path)
     if os.path.exists(pet_path):
         print(f"Loading PET image: {pet_path}")
@@ -105,10 +132,11 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
         print(f"WARNING: PET image not found for {label_map_path}. SUV metrics will be skipped.")
         pet_data = None
 
+    # Find anatomy segmentation
     print("Searching for anatomy segmentation...")
     anat_path = None
     for f in os.listdir(os.path.dirname(label_map_path)):
-        if "_all.nii.gz" in f:
+        if anat_pattern in f:
             anat_path = os.path.join(os.path.dirname(label_map_path), f)
             break
 
@@ -121,7 +149,6 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
         anat_data = anat_img.get_fdata().astype(int)
 
         if pet_data is not None:
-            # Calculate SUV_95 for liver and aorta
             liver_mask = anat_data == 5   # liver label ID
             aorta_mask = anat_data == 23  # aorta label ID
 
@@ -129,7 +156,6 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
                 liver_suv95 = float(np.percentile(pet_data[liver_mask], 95))
             if np.any(aorta_mask):
                 aorta_suv95 = float(np.percentile(pet_data[aorta_mask], 95))
-
     else:
         print(f"WARNING: Anatomy segmentation not found for {label_map_path}")
 
@@ -142,14 +168,19 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
         voxel_count = np.sum(lesion_mask)
         volume_ml = voxel_count * voxel_volume_ml
 
+        # PET-based metrics
         if pet_data is not None:
             suv_values = pet_data[lesion_mask]
-            suv_max = float(np.max(suv_values))
-            suv_mean = float(np.mean(suv_values))
-            suv_95p = float(np.percentile(suv_values, 95))
+            if suv_values.size > 0:
+                suv_max = float(np.max(suv_values))
+                suv_mean = float(np.mean(suv_values))
+                suv_95p = float(np.percentile(suv_values, 95))
+            else:
+                suv_max = suv_mean = suv_95p = 0.0
         else:
             suv_max = suv_mean = suv_95p = 0.0
 
+        # Organ overlap
         organ_info = [("None", 0.0), ("None", 0.0), ("None", 0.0)]
         if anat_data is not None:
             lesion_organs_raw, counts_raw = np.unique(anat_data[lesion_mask], return_counts=True)
@@ -173,6 +204,22 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
                 while len(organ_info) < 3:
                     organ_info.append(("None", 0.0))
 
+        # Filter to usable organs for classification
+        usable_organs = [o for o, _ in organ_info if o not in ("None", "trunc", "extremities")]
+
+        if usable_organs:
+            # Find the label ID for the first usable organ
+            try:
+                label_id = next(k for k, v in ALL_MR_LABELS.items() if v == usable_organs[0])
+                if label_id in ALL_MR_LABELS_INFO:
+                    above_diaphragm, side = classify_lesion_position([usable_organs[0]])
+                else:
+                    above_diaphragm, side = ("unknown", "unknown")
+            except StopIteration:
+                above_diaphragm, side = ("unknown", "unknown")
+        else:
+            above_diaphragm, side = ("unknown", "unknown")
+
         lesions_info.append({
             "lesion_id": lesion_id,
             "voxel_count": int(voxel_count),
@@ -183,27 +230,33 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
             "organ1_name": organ_info[0][0], "organ1_pct": organ_info[0][1],
             "organ2_name": organ_info[1][0], "organ2_pct": organ_info[1][1],
             "organ3_name": organ_info[2][0], "organ3_pct": organ_info[2][1],
-            "deauville_score": None  # placeholder
+            "above_diaphragm": above_diaphragm,
+            "laterality": side,
+            "deauville_score": None
         })
 
-        # Determine highest uptake lesion for Deauville score
+    # Deauville score
+    for lesion in lesions_info:
+        lesion["deauville_score"] = None  # default to None
+
     highest_lesion = None
     if pet_data is not None and liver_suv95 is not None and aorta_suv95 is not None:
         highest_lesion = max(lesions_info, key=lambda x: x["SUV_95percentile"])
         suv95_top = highest_lesion["SUV_95percentile"]
 
-        # Apply Deauville rules
         if suv95_top <= aorta_suv95:
             score = 2
-        elif aorta_suv95 < suv95_top <= liver_suv95:
+        elif suv95_top <= liver_suv95:
             score = 3
-        elif suv95_top > liver_suv95 and suv95_top <= liver_suv95 * 1.5:
+        elif suv95_top <= liver_suv95 * 1.5:
             score = 4
         else:
             score = 5
 
         highest_lesion["deauville_score"] = score
 
+
+    # Summary output
     print(f"\nTop {topn} largest lesions (out of {len(lesions_info)} total):")
     top_n = sorted(lesions_info, key=lambda x: x["volume_ml"], reverse=True)[:topn]
     for lesion in top_n:
@@ -215,20 +268,18 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
                 organs.append(f"{name} ({pct}%)")
         organs_str = ", ".join(organs) if organs else "No significant overlap"
         print(f"- Lesion {lesion['lesion_id']}: Volume = {lesion['volume_ml']:.2f} mL, "
-              f"Organs = {organs_str}, SUV_95% = {lesion['SUV_95percentile']:.0f}")
+              f"Location of lesion (Organs) = {organs_str}") # , SUV_95% = {lesion['SUV_95percentile']:.0f}
 
-    # Print Deauville summary after lesion table
     if highest_lesion is not None:
         print(f"\nDeauville Score for highest uptake lesion (Lesion {highest_lesion['lesion_id']}):")
         print(f"  SUV_95% (lesion) = {highest_lesion['SUV_95percentile']:.0f}")
         print(f"  SUV_95% (aorta)  = {aorta_suv95:.0f}")
         print(f"  SUV_95% (liver)  = {liver_suv95:.0f}")
-        print(f"Score: {highest_lesion['deauville_score']} "
+        print(f"Deauville Score: {highest_lesion['deauville_score']} "
               f"(only relevant if interim or final visit)")
 
-
-
     return lesions_info
+
 
 
 def find_label_maps(input_path, pattern, onedir=False):
@@ -281,6 +332,7 @@ def main():
                 "lesion_id", "voxel_count", "volume_ml",
                 "SUV_max", "SUV_mean", "SUV_95percentile",
                 "organ1_name", "organ1_pct", "organ2_name", "organ2_pct", "organ3_name", "organ3_pct",
+                "above_diaphragm", "laterality",
                 "deauville_score"
             ])
             writer.writeheader()
