@@ -60,7 +60,7 @@ ALL_MR_LABELS_INFO = {
     49: ("iliopsoas_right", 0, "right"),
     50: ("brain", 1, "NA"),
     101: ("trunc", None, "NA"),
-    102: ("extremities", None, "NA"),
+    102: ("extremities", 1, "NA"),
 }
 
 # Keep the original simple mapping if needed elsewhere in the code
@@ -186,24 +186,23 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
             "deauville_score": None  # placeholder
         })
 
-    # Determine highest uptake lesion for Deauville score
+        # Determine highest uptake lesion for Deauville score
     highest_lesion = None
-    deauville_score = None
     if pet_data is not None and liver_suv95 is not None and aorta_suv95 is not None:
         highest_lesion = max(lesions_info, key=lambda x: x["SUV_95percentile"])
         suv95_top = highest_lesion["SUV_95percentile"]
 
         # Apply Deauville rules
         if suv95_top <= aorta_suv95:
-            deauville_score = 2
+            score = 2
         elif aorta_suv95 < suv95_top <= liver_suv95:
-            deauville_score = 3
+            score = 3
         elif suv95_top > liver_suv95 and suv95_top <= liver_suv95 * 1.5:
-            deauville_score = 4
+            score = 4
         else:
-            deauville_score = 5
+            score = 5
 
-        highest_lesion["deauville_score"] = deauville_score
+        highest_lesion["deauville_score"] = score
 
     print(f"\nTop {topn} largest lesions (out of {len(lesions_info)} total):")
     top_n = sorted(lesions_info, key=lambda x: x["volume_ml"], reverse=True)[:topn]
@@ -218,11 +217,15 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
         print(f"- Lesion {lesion['lesion_id']}: Volume = {lesion['volume_ml']:.2f} mL, "
               f"Organs = {organs_str}, SUV_95% = {lesion['SUV_95percentile']:.0f}")
 
-    # Print Deauville score after lesion summary
-    if highest_lesion and deauville_score is not None:
-        print(f"\nDeauville Score for highest uptake lesion (lesion {highest_lesion['lesion_id']}): "
-              f"{deauville_score} "
-              f"(Deauville Score only relevant if interim or final visit)")
+    # Print Deauville summary after lesion table
+    if highest_lesion is not None:
+        print(f"\nDeauville Score for highest uptake lesion (Lesion {highest_lesion['lesion_id']}):")
+        print(f"  SUV_95% (lesion) = {highest_lesion['SUV_95percentile']:.0f}")
+        print(f"  SUV_95% (aorta)  = {aorta_suv95:.0f}")
+        print(f"  SUV_95% (liver)  = {liver_suv95:.0f}")
+        print(f"Score: {highest_lesion['deauville_score']} "
+              f"(only relevant if interim or final visit)")
+
 
 
     return lesions_info
