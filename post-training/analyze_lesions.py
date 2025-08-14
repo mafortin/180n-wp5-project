@@ -6,68 +6,72 @@ import numpy as np
 import csv
 from scipy.ndimage import label
 
+# ──────────────────────────────────────────────────────────────────────────────
 # Organ label mapping with anatomical metadata:
-# Format: label_id: (organ_name, above_diaphragm_flag [Yes=1, No=0, both=None], laterality [Not applicable = NA])
+# Format: label_id: (organ_name, above_diaphragm_flag [Yes=1, No=0, both=None], laterality [Not applicable = NA], lymph node site associated)
 ALL_MR_LABELS_INFO = {
-    1:  ("spleen", 0, "left"),
-    2:  ("kidney_right", 0, "right"),
-    3:  ("kidney_left", 0, "left"),
-    4:  ("gallbladder", 0, "right"),
-    5:  ("liver", 0, "right"),
-    6:  ("stomach", 0, "left"),
-    7:  ("pancreas", 0, "left"),
-    8:  ("adrenal_gland_right", 0, "right"),
-    9:  ("adrenal_gland_left", 0, "left"),
-    10: ("lung_left", 1, "left"),
-    11: ("lung_right", 1, "right"),
-    12: ("esophagus", 1, "NA"),
-    13: ("small_bowel", 0, "NA"),
-    14: ("duodenum", 0, "NA"),
-    15: ("colon", 0, "NA"),
-    16: ("urinary_bladder", 0, "NA"),
-    17: ("prostate", 0, "NA"),
-    18: ("sacrum", 0, "NA"),
-    19: ("vertebrae", None, "NA"),
-    20: ("intervertebral_discs", None, "NA"),
-    21: ("spinal_cord", None, "NA"),
-    22: ("heart", 1, "NA"),
-    23: ("aorta", 1, "NA"),
-    24: ("inferior_vena_cava", 0, "NA"),
-    25: ("portal_vein_and_splenic_vein", 0, "NA"),
-    26: ("iliac_artery_left", 0, "left"),
-    27: ("iliac_artery_right", 0, "right"),
-    28: ("iliac_vena_left", 0, "left"),
-    29: ("iliac_vena_right", 0, "right"),
-    30: ("humerus_left", 1, "left"),
-    31: ("humerus_right", 1, "right"),
-    32: ("scapula_left", 1, "left"),
-    33: ("scapula_right", 1, "right"),
-    34: ("clavicula_left", 1, "left"),
-    35: ("clavicula_right", 1, "right"),
-    36: ("femur_left", 0, "left"),
-    37: ("femur_right", 0, "right"),
-    38: ("hip_left", 0, "left"),
-    39: ("hip_right", 0, "right"),
-    40: ("gluteus_maximus_left", 0, "left"),
-    41: ("gluteus_maximus_right", 0, "right"),
-    42: ("gluteus_medius_left", 0, "left"),
-    43: ("gluteus_medius_right", 0, "right"),
-    44: ("gluteus_minimus_left", 0, "left"),
-    45: ("gluteus_minimus_right", 0, "right"),
-    46: ("autochthon_left", None, "left"),
-    47: ("autochthon_right", None, "right"),
-    48: ("iliopsoas_left", 0, "left"),
-    49: ("iliopsoas_right", 0, "right"),
-    50: ("brain", 1, "NA"),
-    101: ("trunc", None, "NA"),
-    102: ("extremities", 1, "NA"),
+    1:  ("spleen", 0, "left", ["spleen"]),
+    2:  ("kidney_right", 0, "right", ["paraaortic"]),
+    3:  ("kidney_left", 0, "left", ["paraaortic"]),
+    4:  ("gallbladder", 0, "right", ["mesenteric"]),
+    5:  ("liver", 0, "right", []),
+    6:  ("stomach", 0, "left", ["mesenteric"]),
+    7:  ("pancreas", 0, "left", ["mesenteric"]),
+    8:  ("adrenal_gland_right", 0, "right", ["paraaortic"]),
+    9:  ("adrenal_gland_left", 0, "left", ["paraaortic"]),
+    10: ("lung_left", 1, "left", ["hilar"]),
+    11: ("lung_right", 1, "right", ["hilar"]),
+    12: ("esophagus", 1, "NA", ["mediastinal"]),
+    13: ("small_bowel", 0, "NA", ["mesenteric"]),
+    14: ("duodenum", 0, "NA", ["mesenteric"]),
+    15: ("colon", 0, "NA", ["mesenteric"]),
+    16: ("urinary_bladder", 0, "NA", ["iliac", "femoral/inguinal"]),
+    17: ("prostate", 0, "NA", ["iliac", "femoral/inguinal"]),
+    18: ("sacrum", 0, "NA", ["iliac"]),
+    19: ("vertebrae", None, "NA", []),
+    20: ("intervertebral_discs", None, "NA", []),
+    21: ("spinal_cord", None, "NA", []),
+    22: ("heart", 1, "NA", ["mediastinal"]),
+    23: ("aorta", 1, "left", ["mediastinal", "paraaortic"]),
+    24: ("inferior_vena_cava", 0, "right", ["paraaortic"]),
+    25: ("portal_vein_and_splenic_vein", 0, "NA", ["mesenteric"]),
+    26: ("iliac_artery_left", 0, "left", ["iliac"]),
+    27: ("iliac_artery_right", 0, "right", ["iliac"]),
+    28: ("iliac_vena_left", 0, "left", ["iliac"]),
+    29: ("iliac_vena_right", 0, "right", ["iliac"]),
+    30: ("humerus_left", 1, "left", ["axillary", "pectoral"]),
+    31: ("humerus_right", 1, "right", ["axillary_right", "pectoral"]),
+    32: ("scapula_left", 1, "left", ["axillary", "pectoral"]),
+    33: ("scapula_right", 1, "right", ["axillary", "pectoral"]),
+    34: ("clavicula_left", 1, "left", ["supraclavicular", "infraclavicular"]),
+    35: ("clavicula_right", 1, "right", ["supraclavicular", "infraclavicular"]),
+    36: ("femur_left", 0, "left", ["femoral/inguinal"]),
+    37: ("femur_right", 0, "right", ["femoral/inguinal"]),
+    38: ("hip_left", 0, "left", ["iliac"]),
+    39: ("hip_right", 0, "right", ["iliac"]),
+    40: ("gluteus_maximus_left", 0, "left", ["iliac"]),
+    41: ("gluteus_maximus_right", 0, "right", ["iliac"]),
+    42: ("gluteus_medius_left", 0, "left", ["iliac"]),
+    43: ("gluteus_medius_right", 0, "right", ["iliac"]),
+    44: ("gluteus_minimus_left", 0, "left", ["iliac"]),
+    45: ("gluteus_minimus_right", 0, "right", ["iliac"]),
+    46: ("autochthon_left", None, "left", []),
+    47: ("autochthon_right", None, "right", []),
+    48: ("iliopsoas_left", 0, "left", ["iliac"]),
+    49: ("iliopsoas_right", 0, "right", ["iliac"]),
+    50: ("brain", 1, "NA", ["cervical/occipital/preauricular", "waldeyer's ring"]),
+    101: ("trunc", None, "NA", []),
+    102: ("extremities", 1, "NA", []),
+    103: ("head&neck", 1, "NA", ["cervical/occipital/preauricular", "waldeyer's ring"]),
 }
 
-# Keep the original simple mapping if needed elsewhere in the code
+
+# Simple id->name mapping
 ALL_MR_LABELS = {k: v[0] for k, v in ALL_MR_LABELS_INFO.items()}
 
+
+
 def get_pet_path(mask_path):
-    print("Determining PET image path...")
     base_dir = os.path.dirname(mask_path)
     fname_noext = os.path.splitext(os.path.splitext(os.path.basename(mask_path))[0])[0]
     if "_LYM" in fname_noext:
@@ -75,34 +79,31 @@ def get_pet_path(mask_path):
         return os.path.join(base_dir, f"{subj_prefix}_LYM.nii.gz")
     else:
         return os.path.join(base_dir, fname_noext + "_LYM.nii.gz")
-    
 
 def classify_lesion_position(organ_names):
     """
     Classifies lesion position as above/below diaphragm and left/right
     based on organ overlap.
-
-    organ_names: list of up to 3 organ names in order of overlap importance.
-
     Returns:
         above_diaphragm: 1 (above), 0 (below), None (spans or unknown)
         laterality: "left", "right", "NA" (midline), or "unknown"
     """
     fallback_organs = [name for name in organ_names if name not in ("trunc", "extremities", "None")]
-
     if not fallback_organs:
-        return None, "unknown"  # No useful organ overlap
+        return None, "unknown"
 
-    # Find the first valid organ in the label mapping
     for organ in fallback_organs:
         label_id = next((k for k, v in ALL_MR_LABELS.items() if v == organ), None)
         if label_id is not None:
             above_flag, side = ALL_MR_LABELS_INFO[label_id][1], ALL_MR_LABELS_INFO[label_id][2]
             return above_flag, side
-
     return None, "unknown"
 
 
+def classify_lymph_node_region():
+
+
+    return
 
 def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_label.nii.gz",
                     anat_pattern="_all.nii.gz", topn=5):
@@ -204,21 +205,12 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
                 while len(organ_info) < 3:
                     organ_info.append(("None", 0.0))
 
-        # Filter to usable organs for classification
+        # Position & laterality (proxy)
         usable_organs = [o for o, _ in organ_info if o not in ("None", "trunc", "extremities")]
+        above_diaphragm, side = classify_lesion_position(usable_organs[:1] or ["None"])
 
-        if usable_organs:
-            # Find the label ID for the first usable organ
-            try:
-                label_id = next(k for k, v in ALL_MR_LABELS.items() if v == usable_organs[0])
-                if label_id in ALL_MR_LABELS_INFO:
-                    above_diaphragm, side = classify_lesion_position([usable_organs[0]])
-                else:
-                    above_diaphragm, side = ("unknown", "unknown")
-            except StopIteration:
-                above_diaphragm, side = ("unknown", "unknown")
-        else:
-            above_diaphragm, side = ("unknown", "unknown")
+        # Lymph node region (upper-body only)
+        ln_region, ln_conf = classify_lymph_node_region([o for o, _ in organ_info], above_diaphragm, side)
 
         lesions_info.append({
             "lesion_id": lesion_id,
@@ -232,6 +224,8 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
             "organ3_name": organ_info[2][0], "organ3_pct": organ_info[2][1],
             "above_diaphragm": above_diaphragm,
             "laterality": side,
+            "lymph_node_region": ln_region,
+            "ln_region_confidence": ln_conf,
             "deauville_score": None
         })
 
@@ -255,7 +249,6 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
 
         highest_lesion["deauville_score"] = score
 
-
     # Summary output
     print(f"\nTop {topn} largest lesions (out of {len(lesions_info)} total):")
     top_n = sorted(lesions_info, key=lambda x: x["volume_ml"], reverse=True)[:topn]
@@ -267,20 +260,26 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
             if name != "None" and pct > 1.0:
                 organs.append(f"{name} ({pct}%)")
         organs_str = ", ".join(organs) if organs else "No significant overlap"
-        print(f"- Lesion {lesion['lesion_id']}: Volume = {lesion['volume_ml']:.2f} mL, "
-              f"Location of lesion (Organs) = {organs_str}") # , SUV_95% = {lesion['SUV_95percentile']:.0f}
+
+        ln_str = lesion.get("lymph_node_region", "unknown")
+        if lesion.get("ln_region_confidence", 0.0) > 0:
+            ln_str += f" (conf {lesion['ln_region_confidence']:.2f})"
+
+        print(
+            f"- Lesion {lesion['lesion_id']}: "
+            f"Volume = {lesion['volume_ml']:.2f} mL, "
+            f"Organs = {organs_str}, "
+            f"LN region = {ln_str}"
+        )
 
     if highest_lesion is not None:
         print(f"\nDeauville Score for highest uptake lesion (Lesion {highest_lesion['lesion_id']}):")
         print(f"  SUV_95% (lesion) = {highest_lesion['SUV_95percentile']:.0f}")
         print(f"  SUV_95% (aorta)  = {aorta_suv95:.0f}")
         print(f"  SUV_95% (liver)  = {liver_suv95:.0f}")
-        print(f"Deauville Score: {highest_lesion['deauville_score']} "
-              f"(only relevant if interim or final visit)")
+        print(f"Deauville Score: {highest_lesion['deauville_score']} (only relevant if interim or final visit)")
 
     return lesions_info
-
-
 
 def find_label_maps(input_path, pattern, onedir=False):
     print(f"Searching for label maps in: {input_path}")
@@ -295,32 +294,30 @@ def find_label_maps(input_path, pattern, onedir=False):
     return matches
 
 def main():
-    parser = argparse.ArgumentParser(description="Analyze lesion instances in label maps with PET and anatomy data.")
+    parser = argparse.ArgumentParser(description="Analyze lesion instances in label maps with PET and anatomy data, and classify upper-body lymph-node regions.")
     parser.add_argument("-i", "--input", required=True, help="Input directory or single directory to search.")
-    parser.add_argument("--pattern", default="LYM_label.nii.gz", help="Substring to match label maps.")
+    parser.add_argument("--lesion_pattern", default="LYM_label.nii.gz", help="Substring to match the lesion label maps.")
     parser.add_argument("--anat_pattern", default="_all.nii.gz", help="Substring to match anatomy segmentation.")
     parser.add_argument("--onedir", action="store_true", help="Only search the provided directory, not subfolders.")
     parser.add_argument("--topn", type=int, default=5, help="Number of largest lesions to print summary for.")
     parser.add_argument("--save", action="store_true", help="Save instance label maps.")
     args = parser.parse_args()
 
-    label_maps = find_label_maps(args.input, args.pattern, args.onedir)
+    label_maps = find_label_maps(args.input, args.lesion_pattern, args.onedir)
     if not label_maps:
         print("No label maps found.")
         return
 
     for lm in label_maps:
         if args.onedir:
-            # Subject ID is the prefix before the first underscore in the filename
             subject_id = os.path.basename(lm).split("_")[0]
         else:
-            # Subject ID is the name of the subdirectory
             subject_id = os.path.basename(os.path.dirname(lm))
 
         print(f"\n--- Processing subject: {subject_id} ---")
 
         lesions_info = analyze_lesions(lm, save_instances=args.save,
-                                       mask_pattern=args.pattern,
+                                       mask_pattern=args.lesion_pattern,
                                        anat_pattern=args.anat_pattern,
                                        topn=args.topn)
 
@@ -333,13 +330,13 @@ def main():
                 "SUV_max", "SUV_mean", "SUV_95percentile",
                 "organ1_name", "organ1_pct", "organ2_name", "organ2_pct", "organ3_name", "organ3_pct",
                 "above_diaphragm", "laterality",
+                "lymph_node_region", "ln_region_confidence",
                 "deauville_score"
             ])
             writer.writeheader()
             writer.writerows(lesions_info)
 
         print(f"Finished processing subject: {subject_id}")
-
 
 if __name__ == "__main__":
     main()
