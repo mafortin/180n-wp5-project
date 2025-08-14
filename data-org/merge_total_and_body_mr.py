@@ -40,8 +40,8 @@ def save_label_map(data, affine, output_path):
 # -------------------------------
 
 def remap_body_mr_labels(data):
-    """Remap body_mr labels: 1→101, 2→102."""
-    print("Remapping body_mr labels: 1→101, 2→102")
+    """Remap body_mr labels: 1 -> 101, 2 -> 102."""
+    print("Remapping body_mr labels: 1 -> 101, 2 -> 102")
     data_remapped = data.copy()
     data_remapped[data == 1] = 101
     data_remapped[data == 2] = 102
