@@ -4,6 +4,11 @@ import argparse
 import numpy as np
 import nibabel as nib
 import glob
+import scipy.ndimage as ndi
+
+# -------------------------------
+# Loading / Saving
+# -------------------------------
 
 def load_label_map(filepath):
     """Load a label map from .npy or .nii/.nii.gz file."""
@@ -30,6 +35,10 @@ def save_label_map(data, affine, output_path):
     else:
         raise ValueError(f"Unsupported output format: {output_path}")
 
+# -------------------------------
+# Label manipulation
+# -------------------------------
+
 def remap_body_mr_labels(data):
     """Remap body_mr labels: 1→101, 2→102."""
     print("Remapping body_mr labels: 1→101, 2→102")
@@ -47,6 +56,45 @@ def merge_label_maps(ref_data, src_data):
     print(f"Number of voxels added: {np.sum(mask)}")
     return merged
 
+def identify_and_label_head(data, brain_data, extremities_label=102, head_label=103, brain_label=50):
+    """
+    Identify topmost connected component of extremities and relabel as head.
+    Verify that brain_label in brain_data is fully inside this head region.
+    """
+    extremities_mask = (data == extremities_label)
+    labeled, num = ndi.label(extremities_mask)
+
+    if num == 0:
+        print("No extremities found for head identification.")
+        return data
+
+    # Identify component with highest z-extent
+    max_z_per_component = []
+    for comp_id in range(1, num + 1):
+        coords = np.argwhere(labeled == comp_id)
+        max_z = coords[:, 2].max()  # Assuming z-axis is last dim
+        max_z_per_component.append((comp_id, max_z))
+
+    head_component = max(max_z_per_component, key=lambda x: x[1])[0]
+    head_mask = (labeled == head_component)
+
+    # Brain label mask
+    brain_mask = (brain_data == brain_label)
+
+    # Verification: brain completely inside head_mask
+    if np.any(brain_mask) and not np.all(head_mask[brain_mask]):
+        print("WARNING: Brain is not fully inside the identified head component. Skipping head relabel.")
+        return data
+
+    # Apply head label
+    data[head_mask] = head_label
+    print(f"Head identified as component {head_component}, relabeled to {head_label}.")
+    return data
+
+# -------------------------------
+# Filename utilities
+# -------------------------------
+
 def make_all_filename(original_filename):
     """Replace _oseg or _body with _all in the filename."""
     base = os.path.basename(original_filename)
@@ -57,17 +105,35 @@ def make_all_filename(original_filename):
     else:
         raise ValueError(f"Filename does not contain _oseg or _body: {original_filename}")
 
+# -------------------------------
+# Processing
+# -------------------------------
+
 def process_pair(total_path, body_path, output_dir):
     """Process one subject pair of total_mr and body_mr files."""
     total_data, affine = load_label_map(total_path)
     body_data, _ = load_label_map(body_path)
+
+    # Remap and identify head
     body_data_remapped = remap_body_mr_labels(body_data)
+    body_data_remapped = identify_and_label_head(
+        body_data_remapped,
+        brain_data=total_data,
+        extremities_label=102,
+        head_label=103,
+        brain_label=50
+    )
+
     merged_data = merge_label_maps(total_data, body_data_remapped)
 
     # Build output filename based on total_path
     out_filename = make_all_filename(total_path)
     output_path = os.path.join(output_dir, out_filename)
     save_label_map(merged_data, affine, output_path)
+
+# -------------------------------
+# Main
+# -------------------------------
 
 def main():
     parser = argparse.ArgumentParser(description="Merge total_mr and body_mr label maps into one combined label map.")
@@ -76,7 +142,6 @@ def main():
     args = parser.parse_args()
 
     if args.onedir:
-        # Single directory mode
         print("Running in --onedir mode")
         oseg_files = sorted(glob.glob(os.path.join(args.input_dir, "*_oseg*.nii*")))
         for oseg_path in oseg_files:
@@ -88,7 +153,6 @@ def main():
             body_path = body_candidates[0]
             process_pair(oseg_path, body_path, args.input_dir)
     else:
-        # Subdirectory-per-subject mode
         print("Running in multi-subdirectory mode")
         subdirs = [d for d in os.listdir(args.input_dir) if os.path.isdir(os.path.join(args.input_dir, d))]
         for sub_id in subdirs:
