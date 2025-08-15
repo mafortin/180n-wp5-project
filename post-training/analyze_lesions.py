@@ -59,10 +59,10 @@ ALL_MR_LABELS_INFO = {
     47: ("autochthon_right", None, "right", []),
     48: ("iliopsoas_left", 0, "left", ["iliac"]),
     49: ("iliopsoas_right", 0, "right", ["iliac"]),
-    50: ("brain", 1, "NA", ["cervical/occipital/preauricular", "waldeyer's ring"]),
+    50: ("brain", 1, "NA", ["cervical/occipital/preauricular/waldeyer's ring"]),
     101: ("trunc", None, "NA", []),
     102: ("extremities", 1, "NA", []),
-    103: ("head&neck", 1, "NA", ["cervical/occipital/preauricular", "waldeyer's ring"]),
+    103: ("head&neck", 1, "NA", ["cervical/occipital/preauricular/waldeyer's ring"]),
 }
 
 
@@ -108,7 +108,10 @@ def lesion_centroid(mask):
 def classify_lesion(organ_ids, lesion_mask, organ_data):
     # Handle empty list
     if not organ_ids:
-        return "unknown"
+        return "unknown", "unknown"
+
+    # Compute lesion centroid
+    lesion_c = lesion_centroid(lesion_mask)
 
     # Get lymph node sites for each overlapping organ
     possible_sites = []
@@ -118,47 +121,46 @@ def classify_lesion(organ_ids, lesion_mask, organ_data):
 
     # If lesion overlaps only one type of site → assign directly
     if len(possible_sites) == 1:
-        return possible_sites[0]
+        return possible_sites[0], "unknown"
 
-    # Special handling for clavicle lesions
-    clavicle_ids = [34, 35]
-    if any(cid in organ_ids for cid in clavicle_ids):
+    # Special handling for trunk-primary lesions near clavicles
+    if organ_ids and organ_ids[0] == 101:
         lesion_c = lesion_centroid(lesion_mask)
-        for cid in clavicle_ids:
-            if cid in organ_ids:
-                clavicle_c = lesion_centroid(organ_data == cid)
-                # Y-axis comparison (assuming axial orientation)
-                if lesion_c[1] > clavicle_c[1]:
-                    return "supraclavicular"
-                else:
-                    return "infraclavicular"
 
-    # Special handling for trunk lesions
-    if 101 in organ_ids:
-        lesion_c = lesion_centroid(lesion_mask)
-        # Estimate diaphragm plane: mean y of liver top slice and lung bottom slice
-        liver_mask = organ_data == 5
+        # Get centroids for head and lungs to filter Z range
+        head_mask = organ_data == 103
         lung_mask = (organ_data == 10) | (organ_data == 11)
-        liver_top = np.max(np.where(liver_mask)[1]) if np.any(liver_mask) else None
-        lung_bottom = np.min(np.where(lung_mask)[1]) if np.any(lung_mask) else None
-        if liver_top is not None and lung_bottom is not None:
-            diaphragm_y = (liver_top + lung_bottom) / 2
-            if lesion_c[1] > diaphragm_y:
-                # Above diaphragm → pick an above-diaphragm site if available
-                for oid in organ_ids:
-                    if ALL_MR_LABELS_INFO[oid][1] == 1 and ALL_MR_LABELS_INFO[oid][3]:
-                        return ALL_MR_LABELS_INFO[oid][3][0]
-            else:
-                # Below diaphragm
-                for oid in organ_ids:
-                    if ALL_MR_LABELS_INFO[oid][1] == 0 and ALL_MR_LABELS_INFO[oid][3]:
-                        return ALL_MR_LABELS_INFO[oid][3][0]
+        if np.any(head_mask) and np.any(lung_mask):
+            head_c = lesion_centroid(head_mask)
+            lung_c = lesion_centroid(lung_mask)
 
-    # Fallback: pick first available site
-    if possible_sites:
-        return possible_sites[0]
+            # Superior-inferior axis index in centroid array
+            z_idx = 2
 
-    return "unknown"
+            # Lesion must be below head and above lungs along Z
+            if lesion_c[z_idx] < head_c[z_idx] and lesion_c[z_idx] > lung_c[z_idx]:
+                # Get centroids of clavicles
+                clav_centroids = {}
+                for cid in (34, 35):
+                    if np.any(organ_data == cid):
+                        clav_centroids[cid] = lesion_centroid(organ_data == cid)
+
+                if clav_centroids:
+                    # Find closest clavicle centroid in 3D space
+                    closest_cid = min(
+                        clav_centroids,
+                        key=lambda cid: np.linalg.norm(lesion_c - clav_centroids[cid])
+                    )
+                    closest_clav_c = clav_centroids[closest_cid]
+
+                    if lesion_c[z_idx] > closest_clav_c[z_idx]:
+                        print(f"[Special Rule] Lesion classified as supraclavicular "
+                            f"(closest clavicle: {closest_cid}, lesion_c={lesion_c}, clav_c={closest_clav_c})")
+                        return "supraclavicular"
+                    else:
+                        print(f"[Special Rule] Lesion classified as infraclavicular "
+                            f"(closest clavicle: {closest_cid}, lesion_c={lesion_c}, clav_c={closest_clav_c})")
+                        return "infraclavicular"
 
 
 
