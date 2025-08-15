@@ -108,7 +108,7 @@ def lesion_centroid(mask):
 def classify_lesion(organ_ids, lesion_mask, organ_data):
     # Handle empty list
     if not organ_ids:
-        return "unknown", "unknown"
+        return "unknown"
 
     # Compute lesion centroid
     lesion_c = lesion_centroid(lesion_mask)
@@ -121,7 +121,7 @@ def classify_lesion(organ_ids, lesion_mask, organ_data):
 
     # If lesion overlaps only one type of site → assign directly
     if len(possible_sites) == 1:
-        return possible_sites[0], "unknown"
+        return possible_sites[0]
 
     # Special handling for trunk-primary lesions near clavicles
     if organ_ids and organ_ids[0] == 101:
@@ -154,12 +154,8 @@ def classify_lesion(organ_ids, lesion_mask, organ_data):
                     closest_clav_c = clav_centroids[closest_cid]
 
                     if lesion_c[z_idx] > closest_clav_c[z_idx]:
-                        print(f"[Special Rule] Lesion classified as supraclavicular "
-                            f"(closest clavicle: {closest_cid}, lesion_c={lesion_c}, clav_c={closest_clav_c})")
                         return "supraclavicular"
                     else:
-                        print(f"[Special Rule] Lesion classified as infraclavicular "
-                            f"(closest clavicle: {closest_cid}, lesion_c={lesion_c}, clav_c={closest_clav_c})")
                         return "infraclavicular"
 
 
