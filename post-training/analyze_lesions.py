@@ -4,7 +4,7 @@ import argparse
 import nibabel as nib
 import numpy as np
 import csv
-from scipy.ndimage import label
+from scipy.ndimage import label, center_of_mass
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Organ label mapping with anatomical metadata:
@@ -100,10 +100,67 @@ def classify_lesion_position(organ_names):
     return None, "unknown"
 
 
-def classify_lymph_node_region():
+
+def lesion_centroid(mask):
+    return np.array(center_of_mass(mask))
 
 
-    return
+def classify_lesion(organ_ids, lesion_mask, organ_data):
+    # Handle empty list
+    if not organ_ids:
+        return "unknown"
+
+    # Get lymph node sites for each overlapping organ
+    possible_sites = []
+    for oid in organ_ids:
+        possible_sites.extend(ALL_MR_LABELS_INFO[oid][3])
+    possible_sites = list(set(possible_sites))
+
+    # If lesion overlaps only one type of site → assign directly
+    if len(possible_sites) == 1:
+        return possible_sites[0]
+
+    # Special handling for clavicle lesions
+    clavicle_ids = [34, 35]
+    if any(cid in organ_ids for cid in clavicle_ids):
+        lesion_c = lesion_centroid(lesion_mask)
+        for cid in clavicle_ids:
+            if cid in organ_ids:
+                clavicle_c = lesion_centroid(organ_data == cid)
+                # Y-axis comparison (assuming axial orientation)
+                if lesion_c[1] > clavicle_c[1]:
+                    return "supraclavicular"
+                else:
+                    return "infraclavicular"
+
+    # Special handling for trunk lesions
+    if 101 in organ_ids:
+        lesion_c = lesion_centroid(lesion_mask)
+        # Estimate diaphragm plane: mean y of liver top slice and lung bottom slice
+        liver_mask = organ_data == 5
+        lung_mask = (organ_data == 10) | (organ_data == 11)
+        liver_top = np.max(np.where(liver_mask)[1]) if np.any(liver_mask) else None
+        lung_bottom = np.min(np.where(lung_mask)[1]) if np.any(lung_mask) else None
+        if liver_top is not None and lung_bottom is not None:
+            diaphragm_y = (liver_top + lung_bottom) / 2
+            if lesion_c[1] > diaphragm_y:
+                # Above diaphragm → pick an above-diaphragm site if available
+                for oid in organ_ids:
+                    if ALL_MR_LABELS_INFO[oid][1] == 1 and ALL_MR_LABELS_INFO[oid][3]:
+                        return ALL_MR_LABELS_INFO[oid][3][0]
+            else:
+                # Below diaphragm
+                for oid in organ_ids:
+                    if ALL_MR_LABELS_INFO[oid][1] == 0 and ALL_MR_LABELS_INFO[oid][3]:
+                        return ALL_MR_LABELS_INFO[oid][3][0]
+
+    # Fallback: pick first available site
+    if possible_sites:
+        return possible_sites[0]
+
+    return "unknown"
+
+
 
 def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_label.nii.gz",
                     anat_pattern="_all.nii.gz", topn=5):
@@ -183,6 +240,7 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
 
         # Organ overlap
         organ_info = [("None", 0.0), ("None", 0.0), ("None", 0.0)]
+        chosen_main_organ = None
         if anat_data is not None:
             lesion_organs_raw, counts_raw = np.unique(anat_data[lesion_mask], return_counts=True)
             mask = lesion_organs_raw != 0
@@ -205,12 +263,28 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
                 while len(organ_info) < 3:
                     organ_info.append(("None", 0.0))
 
-        # Position & laterality (proxy)
-        usable_organs = [o for o, _ in organ_info if o not in ("None", "trunc", "extremities")]
-        above_diaphragm, side = classify_lesion_position(usable_organs[:1] or ["None"])
+                # New selection rule: skip trunk/extremities unless no other choice
+                for oid in lesion_organs:
+                    if oid not in (101, 102):  # not trunc/extremities
+                        chosen_main_organ = ALL_MR_LABELS.get(int(oid), f"unknown_label_{oid}")
+                        break
+                if chosen_main_organ is None:
+                    chosen_main_organ = "unknown"
 
-        # Lymph node region (upper-body only)
-        ln_region, ln_conf = classify_lymph_node_region([o for o, _ in organ_info], above_diaphragm, side)
+        # Position & laterality (proxy)
+        usable_organs = [chosen_main_organ] if chosen_main_organ not in ("None", "unknown") else []
+        above_diaphragm, side = classify_lesion_position(usable_organs or ["None"])
+
+        # Lymph node region
+        # Convert organ names to IDs
+        organ_ids = [oid for oid, name in ALL_MR_LABELS.items() if name in [o for o, _ in organ_info]]
+
+        ln_region = classify_lesion(
+            organ_ids=organ_ids,
+            lesion_mask=lesion_mask,
+            organ_data=anat_data
+        )
+
 
         lesions_info.append({
             "lesion_id": lesion_id,
@@ -225,9 +299,9 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
             "above_diaphragm": above_diaphragm,
             "laterality": side,
             "lymph_node_region": ln_region,
-            "ln_region_confidence": ln_conf,
             "deauville_score": None
         })
+
 
     # Deauville score
     for lesion in lesions_info:
@@ -281,6 +355,7 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
 
     return lesions_info
 
+
 def find_label_maps(input_path, pattern, onedir=False):
     print(f"Searching for label maps in: {input_path}")
     if onedir:
@@ -292,6 +367,7 @@ def find_label_maps(input_path, pattern, onedir=False):
                 matches.append(os.path.join(root, f))
     print(f"Found {len(matches)} label maps to process inside .")
     return matches
+
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze lesion instances in label maps with PET and anatomy data, and classify upper-body lymph-node regions.")
@@ -330,13 +406,14 @@ def main():
                 "SUV_max", "SUV_mean", "SUV_95percentile",
                 "organ1_name", "organ1_pct", "organ2_name", "organ2_pct", "organ3_name", "organ3_pct",
                 "above_diaphragm", "laterality",
-                "lymph_node_region", "ln_region_confidence",
+                "lymph_node_region",
                 "deauville_score"
             ])
             writer.writeheader()
             writer.writerows(lesions_info)
 
         print(f"Finished processing subject: {subject_id}")
+
 
 if __name__ == "__main__":
     main()
