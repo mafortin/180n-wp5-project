@@ -91,6 +91,93 @@ def identify_and_label_head(data, brain_data, extremities_label=102, head_label=
     print(f"Head identified as component {head_component}, relabeled to {head_label}.")
     return data
 
+
+
+
+def _trunk_stats(data, trunc_label=101):
+    """Return trunk x-center and z-extent."""
+    trunk_mask = (data == trunc_label)
+    if not np.any(trunk_mask):
+        raise ValueError("Trunk (label 101) not found.")
+    xs, ys, zs = np.nonzero(trunk_mask)
+    return {
+        "x_center": xs.mean(),       # sagittal midline anchored to trunk
+        "z_min": int(zs.min()),      # inferior end of trunk
+        "z_max": int(zs.max()),
+        "x_min": int(xs.min()),
+        "x_max": int(xs.max()),
+    }
+
+
+
+
+def identify_and_label_legs(data, trunc_label=101, extremities_label=102,
+                            left_leg_label=106, right_leg_label=107,
+                            trunc_percentile=5):
+    """
+    Label legs from extremities (102) that are INFERIOR to a robust lower
+    bound of the trunk (percentile of trunk z-distribution).
+    """
+    trunk_mask = (data == trunc_label)
+    if not np.any(trunk_mask):
+        raise ValueError("Trunk (label 101) not found.")
+    xs, ys, zs = np.nonzero(trunk_mask)
+    x_center = xs.mean()
+    z_thresh = np.percentile(zs, trunc_percentile)
+
+    ext_mask = (data == extremities_label)
+    if not np.any(ext_mask):
+        print("No extremities left to classify as legs.")
+        return data
+
+    X = np.arange(data.shape[0])[:, None, None]
+    Z = np.arange(data.shape[2])[None, None, :]
+
+    legs_mask = ext_mask & (Z < z_thresh)
+    if not np.any(legs_mask):
+        print("No leg voxels found below trunk threshold.")
+        return data
+
+    right_mask = legs_mask & (X <  x_center)
+    left_mask  = legs_mask & (X >= x_center)
+
+    data[left_mask]  = left_leg_label
+    data[right_mask] = right_leg_label
+
+    print(f"Labeled legs: L={int(left_mask.sum())} vox, R={int(right_mask.sum())} vox (z_thresh={z_thresh}).")
+    return data
+
+
+
+
+
+
+def identify_and_label_arms(data, trunc_label=101, extremities_label=102,
+                            left_arm_label=104, right_arm_label=105):
+    """
+    Label arms AFTER legs and head.
+    Arms are defined strictly as the REMAINING extremities (still 102),
+    split left/right by the trunk sagittal midline.
+    """
+    stats = _trunk_stats(data, trunc_label=trunc_label)
+
+    # only from original extremities that haven't been turned into head/legs
+    arms_mask = (data == extremities_label)
+    if not np.any(arms_mask):
+        print("No extremities left to classify as arms.")
+        return data
+
+    X = np.arange(data.shape[0])[:, None, None]
+    left_mask  = arms_mask & (X >=  stats["x_center"])
+    right_mask = arms_mask & (X < stats["x_center"])
+
+    data[left_mask]  = left_arm_label
+    data[right_mask] = right_arm_label
+
+    print(f"Labeled arms: L={int(left_mask.sum())} vox, R={int(right_mask.sum())} vox.")
+    return data
+
+
 # -------------------------------
 # Filename utilities
 # -------------------------------
@@ -114,7 +201,7 @@ def process_pair(total_path, body_path, output_dir):
     total_data, affine = load_label_map(total_path)
     body_data, _ = load_label_map(body_path)
 
-    # Remap and identify head
+    # Remap and identify head (103)
     body_data_remapped = remap_body_mr_labels(body_data)
     body_data_remapped = identify_and_label_head(
         body_data_remapped,
@@ -124,7 +211,27 @@ def process_pair(total_path, body_path, output_dir):
         brain_label=50
     )
 
+    # 1) Legs first (from 102 below trunk) → 106/107
+    body_data_remapped = identify_and_label_legs(
+        body_data_remapped,
+        trunc_label=101,
+        extremities_label=102,
+        left_leg_label=106,
+        right_leg_label=107
+    )
+
+    # 2) Arms next (STRICTLY remaining 102) → 104/105
+    body_data_remapped = identify_and_label_arms(
+        body_data_remapped,
+        trunc_label=101,
+        extremities_label=102,
+        left_arm_label=104,
+        right_arm_label=105
+    )
+
+    # Merge into total map
     merged_data = merge_label_maps(total_data, body_data_remapped)
+
 
     # Build output filename based on total_path
     out_filename = make_all_filename(total_path)
