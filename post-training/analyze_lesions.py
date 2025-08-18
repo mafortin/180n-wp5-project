@@ -52,10 +52,10 @@ ALL_MR_LABELS_INFO = {
     39: ("hip_right", 0, "right", ["iliac"]),
     40: ("gluteus_maximus_left", 0, "left", ["iliac"]),
     41: ("gluteus_maximus_right", 0, "right", ["iliac"]),
-    42: ("gluteus_medius_left", 0, "left", ["iliac"]),
-    43: ("gluteus_medius_right", 0, "right", ["iliac"]),
-    44: ("gluteus_minimus_left", 0, "left", ["iliac"]),
-    45: ("gluteus_minimus_right", 0, "right", ["iliac"]),
+    42: ("gluteus_medius_left", 0, "left", ["extranodal"]),
+    43: ("gluteus_medius_right", 0, "right", ["extranodal"]),
+    44: ("gluteus_minimus_left", 0, "left", ["extranodal"]),
+    45: ("gluteus_minimus_right", 0, "right", ["extranodal"]),
     46: ("autochthon_left", None, "left", ["extranodal"]),
     47: ("autochthon_right", None, "right", ["extranodal"]),
     48: ("iliopsoas_left", 0, "left", ["iliac"]),
@@ -164,8 +164,33 @@ def classify_lesion(organ_ids, lesion_mask, organ_data):
 
 
 
-def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_label.nii.gz",
+def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
                     anat_pattern="_all.nii.gz", topn=5):
+
+    # Find anatomy segmentation
+    print("Searching for anatomy/organ segmentation...")
+    anat_path = None
+    for f in os.listdir(os.path.dirname(label_map_path)):
+        if anat_pattern in f:
+            anat_path = os.path.join(os.path.dirname(label_map_path), f)
+            break
+    
+    # Find PET image
+    pet_path = pet_path = get_pet_path(label_map_path)
+
+    # Load and check shapes
+    label_shape = nib.load(label_map_path).shape
+    anat_shape = nib.load(anat_path).shape
+    pet_shape = nib.load(pet_path).shape
+
+    if label_shape != anat_shape or label_shape != pet_shape:
+        raise ValueError(
+            f"Shape mismatch detected:\n"
+            f" - Lesion label map: {label_shape}\n"
+            f" - Anatomy segmentation: {anat_shape}\n"
+            f" - PET image: {pet_shape}\n\n"
+            "Please run 'resample_multi_modality_images.py' to align image dimensions before running this script."
+        )
 
     print(f"\nLoading lesion mask: {label_map_path}")
     img = nib.load(label_map_path)
@@ -176,14 +201,12 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
     labeled_array, num_features = label(data, structure=struct)
     print(f"Found {num_features} lesion instances.")
 
-    if save_instances:
-        base = os.path.splitext(os.path.splitext(label_map_path)[0])[0]
-        inst_path = base + "_inst.nii.gz"
-        print(f"Saving instance segmentation to: {inst_path}")
-        nib.save(nib.Nifti1Image(labeled_array, img.affine, img.header), inst_path)
+    base = os.path.splitext(os.path.splitext(label_map_path)[0])[0]
+    inst_path = base + "_inst.nii.gz"
+    print(f"Saving instance segmentation to: {inst_path}")
+    nib.save(nib.Nifti1Image(labeled_array, img.affine, img.header), inst_path)
 
     # Load PET image
-    pet_path = get_pet_path(label_map_path)
     if os.path.exists(pet_path):
         print(f"Loading PET image: {pet_path}")
         pet_img = nib.load(pet_path)
@@ -192,17 +215,11 @@ def analyze_lesions(label_map_path, save_instances=False, mask_pattern="LYM_labe
         print(f"WARNING: PET image not found for {label_map_path}. SUV metrics will be skipped.")
         pet_data = None
 
-    # Find anatomy segmentation
-    print("Searching for anatomy segmentation...")
-    anat_path = None
-    for f in os.listdir(os.path.dirname(label_map_path)):
-        if anat_pattern in f:
-            anat_path = os.path.join(os.path.dirname(label_map_path), f)
-            break
 
     anat_data = None
     liver_suv95 = None
     aorta_suv95 = None
+
     if anat_path and os.path.exists(anat_path):
         print(f"Loading anatomy segmentation: {anat_path}")
         anat_img = nib.load(anat_path)
@@ -378,7 +395,6 @@ def main():
     parser.add_argument("--anat_pattern", default="_all.nii.gz", help="Substring to match anatomy segmentation.")
     parser.add_argument("--onedir", action="store_true", help="Only search the provided directory, not subfolders.")
     parser.add_argument("--topn", type=int, default=5, help="Number of largest lesions to print summary for.")
-    parser.add_argument("--save", action="store_true", help="Save instance label maps.")
     args = parser.parse_args()
 
     label_maps = find_label_maps(args.input, args.lesion_pattern, args.onedir)
@@ -394,8 +410,9 @@ def main():
 
         print(f"\n--- Processing subject: {subject_id} ---")
 
-        lesions_info = analyze_lesions(lm, save_instances=args.save,
-                                       mask_pattern=args.lesion_pattern,
+
+        lesions_info = analyze_lesions(lm,
+                                       lesion_pattern=args.lesion_pattern,
                                        anat_pattern=args.anat_pattern,
                                        topn=args.topn)
 
