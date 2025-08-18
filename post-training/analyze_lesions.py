@@ -8,13 +8,14 @@ from scipy.ndimage import label, center_of_mass
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Organ label mapping with anatomical metadata:
-# Format: label_id: (organ_name, above_diaphragm_flag [Yes=1, No=0, both=None], laterality [Not applicable = NA], lymph node site associated)
+# Format: label_id: 
+# (organ_name, above_diaphragm_flag [Yes=1/No=0/both=None], laterality [Not applicable=NA], lymph node site associated)
 ALL_MR_LABELS_INFO = {
     1:  ("spleen", 0, "left", ["spleen"]),
     2:  ("kidney_right", 0, "right", ["paraaortic"]),
     3:  ("kidney_left", 0, "left", ["paraaortic"]),
     4:  ("gallbladder", 0, "right", ["mesenteric"]),
-    5:  ("liver", 0, "right", []),
+    5:  ("liver", 0, "right", ["extranodal"]),
     6:  ("stomach", 0, "left", ["mesenteric"]),
     7:  ("pancreas", 0, "left", ["mesenteric"]),
     8:  ("adrenal_gland_right", 0, "right", ["paraaortic"]),
@@ -28,9 +29,9 @@ ALL_MR_LABELS_INFO = {
     16: ("urinary_bladder", 0, "NA", ["iliac", "femoral/inguinal"]),
     17: ("prostate", 0, "NA", ["iliac", "femoral/inguinal"]),
     18: ("sacrum", 0, "NA", ["iliac"]),
-    19: ("vertebrae", None, "NA", []),
-    20: ("intervertebral_discs", None, "NA", []),
-    21: ("spinal_cord", None, "NA", []),
+    19: ("vertebrae", None, "NA", ["extranodal"]),
+    20: ("intervertebral_discs", None, "NA", ["extranodal"]),
+    21: ("spinal_cord", None, "NA", ["extranodal"]),
     22: ("heart", 1, "NA", ["mediastinal"]),
     23: ("aorta", 1, "left", ["mediastinal", "paraaortic"]),
     24: ("inferior_vena_cava", 0, "right", ["paraaortic"]),
@@ -55,14 +56,17 @@ ALL_MR_LABELS_INFO = {
     43: ("gluteus_medius_right", 0, "right", ["iliac"]),
     44: ("gluteus_minimus_left", 0, "left", ["iliac"]),
     45: ("gluteus_minimus_right", 0, "right", ["iliac"]),
-    46: ("autochthon_left", None, "left", []),
-    47: ("autochthon_right", None, "right", []),
+    46: ("autochthon_left", None, "left", ["extranodal"]),
+    47: ("autochthon_right", None, "right", ["extranodal"]),
     48: ("iliopsoas_left", 0, "left", ["iliac"]),
     49: ("iliopsoas_right", 0, "right", ["iliac"]),
     50: ("brain", 1, "NA", ["cervical/occipital/preauricular/waldeyer's ring"]),
     101: ("trunc", None, "NA", []),
-    102: ("extremities", 1, "NA", []),
     103: ("head&neck", 1, "NA", ["cervical/occipital/preauricular/waldeyer's ring"]),
+    104: ("arm_left", None, "left", ["axillary"]),
+    105: ("arm_right", None, "right", ["axillary"]),
+    106: ("leg_left", 1, "left", ["femoral/inguinal"]),
+    107: ("leg_right", 1, "right", ["femoral/inguinal"]),
 }
 
 
