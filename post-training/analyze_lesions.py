@@ -92,7 +92,7 @@ def classify_lesion_position(organ_names):
         above_diaphragm: 1 (above), 0 (below), None (spans or unknown)
         laterality: "left", "right", "NA" (midline), or "unknown"
     """
-    fallback_organs = [name for name in organ_names if name not in ("trunc", "extremities", "None")]
+    fallback_organs = [name for name in organ_names if name not in ("trunc", "None")]
     if not fallback_organs:
         return None, "unknown"
 
@@ -221,7 +221,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
     aorta_suv95 = None
 
     if anat_path and os.path.exists(anat_path):
-        print(f"Loading anatomy segmentation: {anat_path}")
+        print(f"Loading anatomy/organ segmentation: {anat_path}")
         anat_img = nib.load(anat_path)
         anat_data = anat_img.get_fdata().astype(int)
 
@@ -258,7 +258,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
             suv_max = suv_mean = suv_95p = 0.0
 
         # Organ overlap
-        organ_info = [("None", 0.0), ("None", 0.0), ("None", 0.0)]
+        organ_info = [("None", 0.0), ("None", 0.0)]
         chosen_main_organ = None
         if anat_data is not None:
             lesion_organs_raw, counts_raw = np.unique(anat_data[lesion_mask], return_counts=True)
@@ -273,18 +273,18 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
                 lesion_organs = lesion_organs[sort_idx]
                 percents = percents[sort_idx]
 
-                top_n = min(3, len(lesion_organs))
+                top_n = min(2, len(lesion_organs))
                 organ_info = []
                 for i in range(top_n):
                     label_id = int(round(lesion_organs[i]))
                     organ_name = ALL_MR_LABELS.get(label_id, f"unknown_label_{label_id}")
                     organ_info.append((organ_name, round(float(percents[i]), 2)))
-                while len(organ_info) < 3:
+                while len(organ_info) < 2:
                     organ_info.append(("None", 0.0))
 
-                # New selection rule: skip trunk/extremities unless no other choice
+                # New selection rule: skip trunks unless no other choice
                 for oid in lesion_organs:
-                    if oid not in (101, 102):  # not trunc/extremities
+                    if oid != 101:  # not trunc
                         chosen_main_organ = ALL_MR_LABELS.get(int(oid), f"unknown_label_{oid}")
                         break
                 if chosen_main_organ is None:
@@ -314,7 +314,6 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
             "SUV_95percentile": suv_95p,
             "organ1_name": organ_info[0][0], "organ1_pct": organ_info[0][1],
             "organ2_name": organ_info[1][0], "organ2_pct": organ_info[1][1],
-            "organ3_name": organ_info[2][0], "organ3_pct": organ_info[2][1],
             "above_diaphragm": above_diaphragm,
             "laterality": side,
             "lymph_node_region": ln_region,
@@ -347,7 +346,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
     top_n = sorted(lesions_info, key=lambda x: x["volume_ml"], reverse=True)[:topn]
     for lesion in top_n:
         organs = []
-        for i in range(1, 4):
+        for i in range(1, 3):
             name = lesion[f"organ{i}_name"]
             pct = lesion[f"organ{i}_pct"]
             if name != "None" and pct > 1.0:
