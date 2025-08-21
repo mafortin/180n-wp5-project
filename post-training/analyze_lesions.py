@@ -5,6 +5,7 @@ import nibabel as nib
 import numpy as np
 import csv
 from scipy.ndimage import label, center_of_mass
+import pandas as pd
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Organ label mapping with anatomical metadata:
@@ -72,6 +73,74 @@ ALL_MR_LABELS_INFO = {
 
 # Simple id->name mapping
 ALL_MR_LABELS = {k: v[0] for k, v in ALL_MR_LABELS_INFO.items()}
+
+
+
+def print_summary_from_csv(csv_path, topn=5):
+    """
+    Reads lesion stats from CSV and prints a structured summary.
+    """
+    df = pd.read_csv(csv_path)
+
+    print("\nFinished analyzing lesions. Printing summary as requested.\n")
+
+    # ---- Top N largest lesions ----
+    print("-------- Top Lesions --------")
+    df_sorted = df.sort_values("volume_ml", ascending=False)
+    top_df = df_sorted.head(topn)
+
+    print(f"Top {topn} largest lesions (out of {len(df)} total):")
+    for _, lesion in top_df.iterrows():
+        organs = []
+        if lesion["organ1_name"] != "None" and lesion["organ1_pct"] > 1.0:
+            organs.append(f"{lesion['organ1_name']} ({lesion['organ1_pct']}%)")
+        if lesion["organ2_name"] != "None" and lesion["organ2_pct"] > 1.0:
+            organs.append(f"{lesion['organ2_name']} ({lesion['organ2_pct']}%)")
+        organs_str = ", ".join(organs) if organs else "No significant overlap"
+
+        print(
+            f"- Lesion {lesion['lesion_id']}: "
+            f"Volume = {lesion['volume_ml']:.2f} mL, "
+            f"Organs = {organs_str}, "
+            f"LN region = {lesion['lymph_node_region']}"
+        )
+
+    # ---- Deauville Score ----
+    if df["deauville_score"].notna().any():
+        print("\n-------- Deauville Score --------")
+        high_lesion = df.loc[df["deauville_score"].notna()].iloc[0]
+        print(f"Lesion {high_lesion['lesion_id']} has Deauville Score {int(high_lesion['deauville_score'])}")
+
+    # ---- Spleen involvement ----
+    if "spleen" in df["organ1_name"].values or "spleen" in df["organ2_name"].values:
+        print("\nInvolvement of spleen detected.")
+
+    # ---- Lymph node involvement ----
+    print("\n-------- Lymph Node Involvement --------")
+    involvement_map = {}
+    extranodal_lesions = []
+
+    for _, lesion in df.iterrows():
+        ln_region = str(lesion["lymph_node_region"])
+        laterality = str(lesion["laterality"])
+        lesion_id = int(lesion["lesion_id"])
+
+        if ln_region == "extranodal":
+            extranodal_lesions.append(lesion_id)
+        else:
+            site = f"{laterality}-{ln_region}"
+            involvement_map.setdefault(site, []).append(lesion_id)
+
+    # Print extranodal separately
+    if extranodal_lesions:
+        print(f"Extranodal involvement detected for lesions {', '.join(map(str, extranodal_lesions))}.")
+
+    # Print nodal involvement explicitly
+    for site, lesions in involvement_map.items():
+        lesions_str = ", ".join(map(str, lesions))
+        print(f"{site}: lesions {lesions_str}")
+
+
 
 
 
@@ -341,6 +410,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
 
         highest_lesion["deauville_score"] = score
 
+    """
     # Summary output
     print(f"\nTop {topn} largest lesions (out of {len(lesions_info)} total):")
     top_n = sorted(lesions_info, key=lambda x: x["volume_ml"], reverse=True)[:topn]
@@ -370,6 +440,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
         print(f"  SUV_95% (aorta)  = {aorta_suv95:.0f}")
         print(f"  SUV_95% (liver)  = {liver_suv95:.0f}")
         print(f"Deauville Score: {highest_lesion['deauville_score']} (only relevant if interim or final visit)")
+    """
 
     return lesions_info
 
@@ -394,6 +465,7 @@ def main():
     parser.add_argument("--anat_pattern", default="_all.nii.gz", help="Substring to match anatomy segmentation.")
     parser.add_argument("--onedir", action="store_true", help="Only search the provided directory, not subfolders.")
     parser.add_argument("--topn", type=int, default=5, help="Number of largest lesions to print summary for.")
+    parser.add_argument("--print_summary", action="store_true", help="Print summary report after processing.")
     args = parser.parse_args()
 
     label_maps = find_label_maps(args.input, args.lesion_pattern, args.onedir)
@@ -409,29 +481,34 @@ def main():
 
         print(f"\n--- Processing subject: {subject_id} ---")
 
-
-        lesions_info = analyze_lesions(lm,
-                                       lesion_pattern=args.lesion_pattern,
-                                       anat_pattern=args.anat_pattern,
-                                       topn=args.topn)
-
+        lesions_info = analyze_lesions(lm, ...)
         base = os.path.splitext(os.path.splitext(lm)[0])[0]
         csv_path = base + "_lesion_stats.csv"
-        print(f"Saving lesion statistics to: {csv_path}")
+
         with open(csv_path, "w", newline="") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=[
+            fieldnames=[ 
                 "lesion_id", "voxel_count", "volume_ml",
                 "SUV_max", "SUV_mean", "SUV_95percentile",
-                "organ1_name", "organ1_pct", "organ2_name", "organ2_pct", "organ3_name", "organ3_pct",
+                "organ1_name", "organ1_pct",
+                "organ2_name", "organ2_pct",
                 "above_diaphragm", "laterality",
                 "lymph_node_region",
                 "deauville_score"
-            ])
+            ]  
+
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
-            writer.writerows(lesions_info)
+
+            for row in lesions_info:
+                # ensure only expected keys
+                filtered = {k: row.get(k, "") for k in fieldnames}
+                writer.writerow(filtered)
 
         print(f"Finished processing subject: {subject_id}")
 
+        # Only now, print the summary if flag set
+        if args.print_summary:
+            print_summary_from_csv(csv_path, args.topn)
 
 if __name__ == "__main__":
     main()
