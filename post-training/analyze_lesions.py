@@ -84,7 +84,7 @@ def print_summary_from_csv(csv_path, topn=5):
     print("\nFinished analyzing lesions. Printing summary as requested.\n")
 
     # ---- Top N largest lesions ----
-    print("-------- Top Lesions --------")
+    print("-------- Lesions summary --------")
     df_sorted = df.sort_values("volume_ml", ascending=False)
     top_df = df_sorted.head(topn)
 
@@ -112,13 +112,24 @@ def print_summary_from_csv(csv_path, topn=5):
         high_lesion = df.loc[df["deauville_score"].notna()].iloc[0]
         print(f"Lesion {high_lesion['lesion_id']} has Deauville Score {int(high_lesion['deauville_score'])}")
         print(f"  SUV_95% (lesion) = {high_lesion['SUV_95percentile']:.0f}")
-        print(f"  SUV_95% (aorta)  = {df['SUV_95percentile'][df['lymph_node_region']=='aorta'].max() if 'aorta' in df['lymph_node_region'].values else 'N/A'}")
-        print(f"  SUV_95% (liver)  = {df['SUV_95percentile'][df['lymph_node_region']=='extranodal'].max() if 'liver' in df['organ1_name'].values or 'liver' in df['organ2_name'].values else 'N/A'}")
+        # Read aorta and liver values from the new columns
+        suv95_aorta = high_lesion.get("SUV95_aorta", "N/A")
+        suv95_liver = high_lesion.get("SUV95_liver", "N/A")
+        print(f"  SUV_95% (aorta)  = {round(suv95_aorta,0) if suv95_aorta != '' else 'N/A'}")
+        print(f"  SUV_95% (liver)  = {round(suv95_liver,0) if suv95_liver != '' else 'N/A'}")
         print("Note: Deauville score is only relevant if this is not the baseline visit.")
 
+
     # ---- Spleen involvement ----
-    if "spleen" in df["organ1_name"].values or "spleen" in df["organ2_name"].values:
-        print("\nInvolvement of spleen detected.")
+    spleen_lesions = df.loc[
+        (df["organ1_name"] == "spleen") | (df["organ2_name"] == "spleen"),
+        "lesion_id"
+    ].tolist()
+
+    if spleen_lesions:
+        print("\n*** ALERT: Spleen involvement detected ***")
+        for lid in spleen_lesions:
+            print(f"Spleen Involvement detected with Lesion {int(lid)}")
 
     # ---- Lymph node involvement ----
     print("\n-------- Lymph Node Involvement --------")
@@ -328,7 +339,6 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
         print(f"WARNING: PET image not found for {label_map_path}. SUV metrics will be skipped.")
         pet_data = None
 
-
     anat_data = None
     liver_suv95 = None
     aorta_suv95 = None
@@ -339,6 +349,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
         anat_data = anat_img.get_fdata().astype(int)
 
         if pet_data is not None:
+            # Liver and Aorta masks
             liver_mask = anat_data == 5   # liver label ID
             aorta_mask = anat_data == 23  # aorta label ID
 
@@ -346,6 +357,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
                 liver_suv95 = float(np.percentile(pet_data[liver_mask], 95))
             if np.any(aorta_mask):
                 aorta_suv95 = float(np.percentile(pet_data[aorta_mask], 95))
+
     else:
         print(f"WARNING: Anatomy segmentation not found for {label_map_path}")
 
@@ -358,7 +370,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
         voxel_count = np.sum(lesion_mask)
         volume_ml = voxel_count * voxel_volume_ml
 
-        # PET-based metrics
+        # --- PET-based metrics for lesion ---
         if pet_data is not None:
             suv_values = pet_data[lesion_mask]
             if suv_values.size > 0:
@@ -370,7 +382,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
         else:
             suv_max = suv_mean = suv_95p = 0.0
 
-        # Organ overlap
+        # --- Organ overlap and main organ selection ---
         organ_info = [("None", 0.0), ("None", 0.0)]
         chosen_main_organ = None
         if anat_data is not None:
@@ -395,7 +407,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
                 while len(organ_info) < 2:
                     organ_info.append(("None", 0.0))
 
-                # New selection rule: skip trunc unless no other choice
+                # Skip trunk unless no other choice
                 for oid in lesion_organs:
                     if oid != 101:  # not trunc
                         chosen_main_organ = ALL_MR_LABELS.get(int(oid), f"unknown_label_{oid}")
@@ -403,11 +415,11 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
                 if chosen_main_organ is None:
                     chosen_main_organ = "unknown"
 
-        # Position & laterality (proxy)
+        # --- Position & laterality ---
         usable_organs = [chosen_main_organ] if chosen_main_organ not in ("None", "unknown") else []
         above_diaphragm, side = classify_lesion_position(usable_organs or ["None"])
 
-        # Lymph node region
+        # --- Lymph node region ---
         organ_ids = [oid for oid, name in ALL_MR_LABELS.items() if name in [o for o, _ in organ_info]]
         ln_region = classify_lesion(
             organ_ids=organ_ids,
@@ -415,34 +427,24 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
             organ_data=anat_data
         )
 
-        # --- Normalize laterality/site if ln_region encodes both (e.g. "left-supraclavicular") ---
-        if isinstance(ln_region, str) and "-" in ln_region:
-            side_from_region, site = ln_region.split("-", 1)
-
-            # Only override laterality if side was not already determined
-            if side in ("unknown", "NA", ""):
-                side = side_from_region
-
-            ln_region = site  # keep only the site
-
-        # Save lesion info
+        # --- Append lesion info, including reference SUVs ---
         lesions_info.append({
             "lesion_id": lesion_id,
             "volume_ml": volume_ml,
             "SUV_max": suv_max,
             "SUV_mean": suv_mean,
             "SUV_95percentile": suv_95p,
-            "organ1_name": organ_info[0][0], "organ1_pct": organ_info[0][1],
-            "organ2_name": organ_info[1][0], "organ2_pct": organ_info[1][1],
+            "organ1_name": organ_info[0][0],
+            "organ1_pct": organ_info[0][1],
+            "organ2_name": organ_info[1][0],
+            "organ2_pct": organ_info[1][1],
             "above_diaphragm": above_diaphragm,
             "laterality": side,
             "lymph_node_region": ln_region,
-            "deauville_score": None
+            "deauville_score": None,
+            "SUV95_aorta": aorta_suv95,
+            "SUV95_liver": liver_suv95
         })
-
-
-
-
 
     # Deauville score
     for lesion in lesions_info:
@@ -540,8 +542,9 @@ def main():
         csv_path = base + "_lesion_stats.csv"
 
         with open(csv_path, "w", newline="") as csvfile:
-            fieldnames=[ 
-                "lesion_id", "volume_ml", "SUV_95percentile",
+            fieldnames = [ 
+                "lesion_id", "volume_ml", "SUV_max", "SUV_mean", "SUV_95percentile",
+                "SUV95_aorta", "SUV95_liver",
                 "organ1_name", "organ1_pct",
                 "organ2_name", "organ2_pct",
                 "above_diaphragm", "laterality",
@@ -553,7 +556,7 @@ def main():
             writer.writeheader()
 
             for row in lesions_info:
-                # ensure only expected keys
+                # Only include keys that are in fieldnames
                 filtered = {k: row.get(k, "") for k in fieldnames}
                 writer.writerow(filtered)
 
