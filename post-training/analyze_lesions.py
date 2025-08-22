@@ -75,7 +75,6 @@ ALL_MR_LABELS_INFO = {
 ALL_MR_LABELS = {k: v[0] for k, v in ALL_MR_LABELS_INFO.items()}
 
 
-
 def print_summary_from_csv(csv_path, topn=5):
     """
     Reads lesion stats from CSV and prints a structured summary.
@@ -91,6 +90,8 @@ def print_summary_from_csv(csv_path, topn=5):
 
     print(f"Top {topn} largest lesions (out of {len(df)} total):")
     for _, lesion in top_df.iterrows():
+        ln_str = lesion.get("lymph_node_region", "unknown")
+
         organs = []
         if lesion["organ1_name"] != "None" and lesion["organ1_pct"] > 1.0:
             organs.append(f"{lesion['organ1_name']} ({lesion['organ1_pct']}%)")
@@ -101,8 +102,8 @@ def print_summary_from_csv(csv_path, topn=5):
         print(
             f"- Lesion {lesion['lesion_id']}: "
             f"Volume = {lesion['volume_ml']:.2f} mL, "
-            f"Organs = {organs_str}, "
-            f"LN region = {lesion['lymph_node_region']}"
+            f"LN region = {ln_str}, "
+            f"Organs = {organs_str}"
         )
 
     # ---- Deauville Score ----
@@ -110,6 +111,10 @@ def print_summary_from_csv(csv_path, topn=5):
         print("\n-------- Deauville Score --------")
         high_lesion = df.loc[df["deauville_score"].notna()].iloc[0]
         print(f"Lesion {high_lesion['lesion_id']} has Deauville Score {int(high_lesion['deauville_score'])}")
+        print(f"  SUV_95% (lesion) = {high_lesion['SUV_95percentile']:.0f}")
+        print(f"  SUV_95% (aorta)  = {df['SUV_95percentile'][df['lymph_node_region']=='aorta'].max() if 'aorta' in df['lymph_node_region'].values else 'N/A'}")
+        print(f"  SUV_95% (liver)  = {df['SUV_95percentile'][df['lymph_node_region']=='extranodal'].max() if 'liver' in df['organ1_name'].values or 'liver' in df['organ2_name'].values else 'N/A'}")
+        print("Note: Deauville score is only relevant if this is not the baseline visit.")
 
     # ---- Spleen involvement ----
     if "spleen" in df["organ1_name"].values or "spleen" in df["organ2_name"].values:
@@ -128,7 +133,10 @@ def print_summary_from_csv(csv_path, topn=5):
         if ln_region == "extranodal":
             extranodal_lesions.append(lesion_id)
         else:
-            site = f"{laterality}-{ln_region}"
+            if laterality in ["NA", "nan", "None", "unknown"]:
+                site = ln_region
+            else:
+                site = f"{laterality}-{ln_region}"
             involvement_map.setdefault(site, []).append(lesion_id)
 
     # Print extranodal separately
@@ -144,6 +152,7 @@ def print_summary_from_csv(csv_path, topn=5):
 
 
 
+
 def get_pet_path(mask_path):
     base_dir = os.path.dirname(mask_path)
     fname_noext = os.path.splitext(os.path.splitext(os.path.basename(mask_path))[0])[0]
@@ -153,10 +162,14 @@ def get_pet_path(mask_path):
     else:
         return os.path.join(base_dir, fname_noext + "_LYM.nii.gz")
 
-def classify_lesion_position(organ_names):
+
+
+def classify_lesion_position(organ_names, lesion_mask=None, organ_data=None, site=None):
     """
     Classifies lesion position as above/below diaphragm and left/right
-    based on organ overlap.
+    based on organ overlap. Refines laterality for clavicular lesions
+    using proximity to left/right arm.
+
     Returns:
         above_diaphragm: 1 (above), 0 (below), None (spans or unknown)
         laterality: "left", "right", "NA" (midline), or "unknown"
@@ -165,12 +178,31 @@ def classify_lesion_position(organ_names):
     if not fallback_organs:
         return None, "unknown"
 
+    # default classification
     for organ in fallback_organs:
         label_id = next((k for k, v in ALL_MR_LABELS.items() if v == organ), None)
         if label_id is not None:
             above_flag, side = ALL_MR_LABELS_INFO[label_id][1], ALL_MR_LABELS_INFO[label_id][2]
-            return above_flag, side
-    return None, "unknown"
+            break
+    else:
+        above_flag, side = None, "unknown"
+
+    # --- clavicular refinement ---
+    if site in ("supraclavicular", "infraclavicular") and lesion_mask is not None and organ_data is not None:
+        # arm centroids
+        arm_left_mask = (organ_data == 104)
+        arm_right_mask = (organ_data == 105)
+        if np.any(arm_left_mask) and np.any(arm_right_mask):
+            lesion_c = lesion_centroid(lesion_mask)
+            left_c = lesion_centroid(arm_left_mask)
+            right_c = lesion_centroid(arm_right_mask)
+            dist_left = np.linalg.norm(lesion_c - left_c)
+            dist_right = np.linalg.norm(lesion_c - right_c)
+            side = "left" if dist_left < dist_right else "right"
+
+    return above_flag, side
+
+
 
 
 
@@ -196,30 +228,25 @@ def classify_lesion(organ_ids, lesion_mask, organ_data):
     if len(possible_sites) == 1:
         return possible_sites[0]
 
-    # Special handling for trunk-primary lesions near clavicles
+    # ---- Special handling for trunk-primary lesions near clavicles ----
     if organ_ids and organ_ids[0] == 101:
-        lesion_c = lesion_centroid(lesion_mask)
-
-        # Get centroids for head and lungs to filter Z range
         head_mask = organ_data == 103
         lung_mask = (organ_data == 10) | (organ_data == 11)
         if np.any(head_mask) and np.any(lung_mask):
             head_c = lesion_centroid(head_mask)
             lung_c = lesion_centroid(lung_mask)
 
-            # Superior-inferior axis index in centroid array
-            z_idx = 2
+            z_idx = 2  # superior-inferior axis
 
-            # Lesion must be below head and above lungs along Z
             if lesion_c[z_idx] < head_c[z_idx] and lesion_c[z_idx] > lung_c[z_idx]:
                 # Get centroids of clavicles
                 clav_centroids = {}
-                for cid in (34, 35):
+                for cid in (34, 35):  # clavicle IDs
                     if np.any(organ_data == cid):
                         clav_centroids[cid] = lesion_centroid(organ_data == cid)
 
                 if clav_centroids:
-                    # Find closest clavicle centroid in 3D space
+                    # Find closest clavicle
                     closest_cid = min(
                         clav_centroids,
                         key=lambda cid: np.linalg.norm(lesion_c - clav_centroids[cid])
@@ -227,9 +254,26 @@ def classify_lesion(organ_ids, lesion_mask, organ_data):
                     closest_clav_c = clav_centroids[closest_cid]
 
                     if lesion_c[z_idx] > closest_clav_c[z_idx]:
-                        return "supraclavicular"
+                        site = "supraclavicular"
                     else:
-                        return "infraclavicular"
+                        site = "infraclavicular"
+
+                    # ---- Assign laterality ONLY for clavicular lesions ----
+                    arm_centroids = {}
+                    for aid, arm_side in [(104, "left"), (105, "right")]:
+                        if np.any(organ_data == aid):
+                            arm_centroids[arm_side] = lesion_centroid(organ_data == aid)
+
+                    if arm_centroids:
+                        closest_arm = min(
+                            arm_centroids,
+                            key=lambda k: np.linalg.norm(lesion_c - arm_centroids[k])
+                        )
+                        return f"{closest_arm}-{site}"
+
+                    return site  # fallback no arms → no laterality
+
+    return "unknown"
 
 
 
@@ -351,7 +395,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
                 while len(organ_info) < 2:
                     organ_info.append(("None", 0.0))
 
-                # New selection rule: skip trunks unless no other choice
+                # New selection rule: skip trunc unless no other choice
                 for oid in lesion_organs:
                     if oid != 101:  # not trunc
                         chosen_main_organ = ALL_MR_LABELS.get(int(oid), f"unknown_label_{oid}")
@@ -364,19 +408,26 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
         above_diaphragm, side = classify_lesion_position(usable_organs or ["None"])
 
         # Lymph node region
-        # Convert organ names to IDs
         organ_ids = [oid for oid, name in ALL_MR_LABELS.items() if name in [o for o, _ in organ_info]]
-
         ln_region = classify_lesion(
             organ_ids=organ_ids,
             lesion_mask=lesion_mask,
             organ_data=anat_data
         )
 
+        # --- Normalize laterality/site if ln_region encodes both (e.g. "left-supraclavicular") ---
+        if isinstance(ln_region, str) and "-" in ln_region:
+            side_from_region, site = ln_region.split("-", 1)
 
+            # Only override laterality if side was not already determined
+            if side in ("unknown", "NA", ""):
+                side = side_from_region
+
+            ln_region = site  # keep only the site
+
+        # Save lesion info
         lesions_info.append({
             "lesion_id": lesion_id,
-            "voxel_count": int(voxel_count),
             "volume_ml": volume_ml,
             "SUV_max": suv_max,
             "SUV_mean": suv_mean,
@@ -388,6 +439,9 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
             "lymph_node_region": ln_region,
             "deauville_score": None
         })
+
+
+
 
 
     # Deauville score
@@ -403,7 +457,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
             score = 2
         elif suv95_top <= liver_suv95:
             score = 3
-        elif suv95_top <= liver_suv95 * 1.5:
+        elif suv95_top <= liver_suv95 * 1.5: # Ad hoc value of 1.5
             score = 4
         else:
             score = 5
@@ -487,8 +541,7 @@ def main():
 
         with open(csv_path, "w", newline="") as csvfile:
             fieldnames=[ 
-                "lesion_id", "voxel_count", "volume_ml",
-                "SUV_max", "SUV_mean", "SUV_95percentile",
+                "lesion_id", "volume_ml", "SUV_95percentile",
                 "organ1_name", "organ1_pct",
                 "organ2_name", "organ2_pct",
                 "above_diaphragm", "laterality",
