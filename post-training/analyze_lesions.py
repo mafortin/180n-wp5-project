@@ -375,12 +375,11 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
             suv_values = pet_data[lesion_mask]
             if suv_values.size > 0:
                 suv_max = float(np.max(suv_values))
-                suv_mean = float(np.mean(suv_values))
                 suv_95p = float(np.percentile(suv_values, 95))
             else:
-                suv_max = suv_mean = suv_95p = 0.0
+                suv_max = suv_95p = 0.0
         else:
-            suv_max = suv_mean = suv_95p = 0.0
+            suv_max = suv_95p = 0.0
 
         # --- Organ overlap and main organ selection ---
         organ_info = [("None", 0.0), ("None", 0.0)]
@@ -432,7 +431,6 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
             "lesion_id": lesion_id,
             "volume_ml": volume_ml,
             "SUV_max": suv_max,
-            "SUV_mean": suv_mean,
             "SUV_95percentile": suv_95p,
             "organ1_name": organ_info[0][0],
             "organ1_pct": organ_info[0][1],
@@ -543,7 +541,7 @@ def main():
 
         with open(csv_path, "w", newline="") as csvfile:
             fieldnames = [ 
-                "lesion_id", "volume_ml", "SUV_max", "SUV_mean", "SUV_95percentile",
+                "lesion_id", "volume_ml", "SUV_max", "SUV_95percentile",
                 "SUV95_aorta", "SUV95_liver",
                 "organ1_name", "organ1_pct",
                 "organ2_name", "organ2_pct",
