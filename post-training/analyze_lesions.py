@@ -464,38 +464,6 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
 
         highest_lesion["deauville_score"] = score
 
-    """
-    # Summary output
-    print(f"\nTop {topn} largest lesions (out of {len(lesions_info)} total):")
-    top_n = sorted(lesions_info, key=lambda x: x["volume_ml"], reverse=True)[:topn]
-    for lesion in top_n:
-        organs = []
-        for i in range(1, 3):
-            name = lesion[f"organ{i}_name"]
-            pct = lesion[f"organ{i}_pct"]
-            if name != "None" and pct > 1.0:
-                organs.append(f"{name} ({pct}%)")
-        organs_str = ", ".join(organs) if organs else "No significant overlap"
-
-        ln_str = lesion.get("lymph_node_region", "unknown")
-        if lesion.get("ln_region_confidence", 0.0) > 0:
-            ln_str += f" (conf {lesion['ln_region_confidence']:.2f})"
-
-        print(
-            f"- Lesion {lesion['lesion_id']}: "
-            f"Volume = {lesion['volume_ml']:.2f} mL, "
-            f"Organs = {organs_str}, "
-            f"LN region = {ln_str}"
-        )
-
-    if highest_lesion is not None:
-        print(f"\nDeauville Score for highest uptake lesion (Lesion {highest_lesion['lesion_id']}):")
-        print(f"  SUV_95% (lesion) = {highest_lesion['SUV_95percentile']:.0f}")
-        print(f"  SUV_95% (aorta)  = {aorta_suv95:.0f}")
-        print(f"  SUV_95% (liver)  = {liver_suv95:.0f}")
-        print(f"Deauville Score: {highest_lesion['deauville_score']} (only relevant if interim or final visit)")
-    """
-
     return lesions_info
 
 
