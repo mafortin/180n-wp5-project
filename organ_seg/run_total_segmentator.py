@@ -6,7 +6,7 @@ import argparse
 import os
 import glob
 
-def run_total_segmentator(input_path, output_path, task='total_mr', one=True, labels=None):
+def run_total_segmentator(input_path, output_path, task='total_mr', one=True, labels=None, cpu=False):
     cmd = [
         "TotalSegmentator",
         "-i", input_path,
@@ -20,6 +20,9 @@ def run_total_segmentator(input_path, output_path, task='total_mr', one=True, la
     if labels is not None:
         cmd.append("--roi_subset")
         cmd.extend(labels)
+
+    if cpu:
+        cmd.extend(["--device", "cpu"])
 
     print(f"Running command: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -60,7 +63,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Run TotalSegmentator on all NIfTI files in a directory or subdirectories.")
     parser.add_argument("-i", "--input", required=True, help="Input directory containing all images or subdirectories with images to be segmented.")
-    parser.add_argument("-o", "--output", required=True, help="Output directory where all the label maps will be saved.")
+    parser.add_argument("-o", "--output", required=False, help="Output directory where all the label maps will be saved. If not provided, uses the input directory.")
     parser.add_argument("-t", "--task", default="total_mr", help="Task to run for the main segmentation (default: total_mr).")
     parser.add_argument("--one", action="store_true", help="Create one final output label map with all labels (instead of N label maps for all labels individually).")
     parser.add_argument("-l", "--labels", nargs="+", default=None, help="List of labels to segment.")
@@ -68,8 +71,13 @@ if __name__ == "__main__":
     parser.add_argument("--subdirs", action="store_true", help="Search for images in subdirectories. Uses subdirectory name as subject ID.")
     parser.add_argument("--filter", type=str, help="Only segment files containing this substring in their filename.")
     parser.add_argument("--no_body_mr", action="store_true", help="Do not run the additional body_mr segmentation.")
+    parser.add_argument("--cpu", action="store_true", help="Run segmentation on CPU instead of GPU.")
 
     args = parser.parse_args()
+
+    # Set output directory to input directory if not provided
+    if args.output is None:
+        args.output = args.input
 
     if args.labels is not None:
         print(f"Labels to be segmented: {args.labels}")
@@ -112,7 +120,7 @@ if __name__ == "__main__":
 
         # Run main task (total_mr by default)
         print(f"Processing {nii_file} -> {output_file} with task {args.task}")
-        run_total_segmentator(nii_file, output_file, args.task, args.one, args.labels)
+        run_total_segmentator(nii_file, output_file, args.task, args.one, args.labels, cpu=args.cpu)
 
         # Run additional body_mr unless disabled
         if not args.no_body_mr:
@@ -122,6 +130,6 @@ if __name__ == "__main__":
             else:
                 output_file_body = get_output_filename(nii_file, args.output, body_suffix)
             print(f"Processing {nii_file} -> {output_file_body} with task body_mr")
-            run_total_segmentator(nii_file, output_file_body, "body_mr", args.one, args.labels)
+            run_total_segmentator(nii_file, output_file_body, "body_mr", args.one, args.labels, cpu=args.cpu)
 
     print("TotalSegmentator run completed successfully.")
