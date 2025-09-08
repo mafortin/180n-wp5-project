@@ -244,7 +244,7 @@ def process_pair(total_path, body_path, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="Merge total_mr and body_mr label maps into one combined label map.")
-    parser.add_argument('--input_dir', required=True, help='Directory containing subject subdirectories or one directory with all label maps')
+    parser.add_argument('-i','--input_dir', required=True, help='Directory containing subject subdirectories or one directory with all label maps')
     parser.add_argument('--onedir', action='store_true', help='Treat input_dir as a single directory containing all label maps (no subdirectories)')
     args = parser.parse_args()
 
