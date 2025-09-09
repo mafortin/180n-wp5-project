@@ -287,7 +287,6 @@ def classify_lesion(organ_ids, lesion_mask, organ_data):
     return "unknown"
 
 
-
 def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
                     anat_pattern="_all.nii.gz", topn=5):
 
@@ -300,12 +299,33 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
             break
     
     # Find PET image
-    pet_path = pet_path = get_pet_path(label_map_path)
+    pet_path = get_pet_path(label_map_path)
 
     # Load and check shapes
-    label_shape = nib.load(label_map_path).shape
+    label_img = nib.load(label_map_path)
+    label_shape = label_img.shape
     anat_shape = nib.load(anat_path).shape
     pet_shape = nib.load(pet_path).shape
+    data = label_img.get_fdata().astype(np.uint8)
+
+    # If no lesion found, skip analysis and create empty CSV
+    if np.sum(data) == 0:
+        print("No lesion found in label map. Skipping analysis for this subject.")
+        base = os.path.splitext(os.path.splitext(label_map_path)[0])[0]
+        csv_path = base + "_lesion_stats.csv"
+        fieldnames = [ 
+            "lesion_id", "volume_ml", "SUV_max", "SUV_95percentile",
+            "SUV95_aorta", "SUV95_liver",
+            "organ1_name", "organ1_pct",
+            "organ2_name", "organ2_pct",
+            "above_diaphragm", "laterality",
+            "lymph_node_region",
+            "deauville_score"
+        ]
+        with open(csv_path, "w", newline="") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            return []
 
     if label_shape != anat_shape or label_shape != pet_shape:
         raise ValueError(
@@ -317,8 +337,7 @@ def analyze_lesions(label_map_path, lesion_pattern="LYM_label.nii.gz",
         )
 
     print(f"\nLoading lesion mask: {label_map_path}")
-    img = nib.load(label_map_path)
-    data = img.get_fdata().astype(np.uint8)
+    img = label_img
 
     print("Performing instance segmentation...")
     struct = np.ones((3, 3, 3), dtype=np.uint8)
