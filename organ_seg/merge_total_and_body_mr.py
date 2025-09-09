@@ -41,7 +41,7 @@ def save_label_map(data, affine, output_path):
 
 def remap_body_mr_labels(data):
     """Remap body_mr labels: 1 -> 101, 2 -> 102."""
-    print("Remapping body_mr labels: 1 -> 101, 2 -> 102")
+    print("Remapping body_mr labels: 1 (trunc) -> 101, 2 (extremities) -> 102")
     data_remapped = data.copy()
     data_remapped[data == 1] = 101
     data_remapped[data == 2] = 102
@@ -53,7 +53,7 @@ def merge_label_maps(ref_data, src_data):
     mask = (src_data != 0) & (ref_data == 0)
     merged = ref_data.copy()
     merged[mask] = src_data[mask]
-    print(f"Number of voxels added: {np.sum(mask)}")
+    #print(f"Number of voxels added: {np.sum(mask)}")
     return merged
 
 def identify_and_label_head(data, brain_data, extremities_label=102, head_label=103, brain_label=50):
@@ -81,14 +81,16 @@ def identify_and_label_head(data, brain_data, extremities_label=102, head_label=
     # Brain label mask
     brain_mask = (brain_data == brain_label)
 
-    # Verification: brain completely inside head_mask
-    if np.any(brain_mask) and not np.all(head_mask[brain_mask]):
-        print("WARNING: Brain is not fully inside the identified head component. Skipping head relabel.")
-        return data
-
+    # Verification: require >= 50% brain inside head_mask
+    if np.any(brain_mask):
+        overlap = np.sum(head_mask & brain_mask) / np.sum(brain_mask)
+        if overlap < 0.5:
+            print(f"WARNING: Brain overlap with head only {overlap:.1%}. Skipping head relabel.")
+            return data
+        
     # Apply head label
     data[head_mask] = head_label
-    print(f"Head identified as component {head_component}, relabeled to {head_label}.")
+    print(f"Head identified and relabeled to {head_label}.")
     return data
 
 
@@ -144,7 +146,7 @@ def identify_and_label_legs(data, trunc_label=101, extremities_label=102,
     data[left_mask]  = left_leg_label
     data[right_mask] = right_leg_label
 
-    print(f"Labeled legs: L={int(left_mask.sum())} vox, R={int(right_mask.sum())} vox (z_thresh={z_thresh}).")
+    print(f"Labeled legs: Left={int(left_mask.sum())} voxels (label 106), Right={int(right_mask.sum())} voxels (label 107).")
     return data
 
 
@@ -174,7 +176,7 @@ def identify_and_label_arms(data, trunc_label=101, extremities_label=102,
     data[left_mask]  = left_arm_label
     data[right_mask] = right_arm_label
 
-    print(f"Labeled arms: L={int(left_mask.sum())} vox, R={int(right_mask.sum())} vox.")
+    print(f"Labeled arms: Left={int(left_mask.sum())} voxels (label 104), Right={int(right_mask.sum())} voxels (label 105).")
     return data
 
 
@@ -263,6 +265,7 @@ def main():
         print("Running in multi-subdirectory mode")
         subdirs = [d for d in os.listdir(args.input_dir) if os.path.isdir(os.path.join(args.input_dir, d))]
         for sub_id in subdirs:
+            print(f"\nProcessing subject: {sub_id}")
             subdir_path = os.path.join(args.input_dir, sub_id)
             oseg_candidates = glob.glob(os.path.join(subdir_path, "*_oseg*.nii*"))
             body_candidates = glob.glob(os.path.join(subdir_path, "*_body*.nii*"))
