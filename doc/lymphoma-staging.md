@@ -109,4 +109,4 @@ python3 post-training/analyze_lesions.py -i XX [--lesion_pattern LYM_label.nii.g
 - Running this script will create a .csv file for each subject where all information extracted from the lesion analysis is saved. 
 - We recommend the user to use the ``--print_summary`` flag so hat it can see "in real time" the sumamry and staging inferred from the analysis.
 	- This summary is human-readable and more practical than the .csv (to be used for further analyses if desired).
-	- The summary output should look like this: ![Screenshot-Staging](figs/screenshot-summary-staging.png) 
+	- The summary output should look like this: ![Screenshot-Staging](../figs/screenshot-summary-staging.png) 
