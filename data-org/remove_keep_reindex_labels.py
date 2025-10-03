@@ -157,7 +157,7 @@ def main():
     if args.reindex and args.reindexing_synthseg:
         parser.error("You cannot use --reindex and --reindexing-synthseg at the same time.")
 
-    # After listing files, filter by substring if provided:
+    # Filter files by substring if provided:
     files = [os.path.join(args.input, f) for f in os.listdir(args.input)
             if (f.endswith(".nii.gz") or f.endswith(".nii")) and
                 (args.filter_substring is None or args.filter_substring in f)]
@@ -166,14 +166,14 @@ def main():
         print("No filter_substring provided: processing all .nii/.nii.gz files.")
     else:
         print(f"File filter substring='{args.filter_substring}' provided. Processing {len(files)} file(s) matching the substring.")
+        print("Files to be processed:")
+        for f in files:
+            print(f"  {os.path.basename(f)}")
 
     set_to_one = parse_set_to_one(args.set_to_one) if args.set_to_one else None
     set_to_label = parse_set_to_label(args.set_to_label) if args.set_to_label else None
 
     os.makedirs(args.output, exist_ok=True)
-
-    files = [os.path.join(args.input, f) for f in os.listdir(args.input)
-             if f.endswith(".nii.gz") or f.endswith(".nii")]
 
     print(f"Processing {len(files)} files with {args.num_workers} workers...")
 
