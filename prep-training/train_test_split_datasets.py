@@ -16,7 +16,7 @@ def main():
     # Optional argument for test output directory
     parser.add_argument('-te', '--test', type=str, help="Path to the output test directory (default: 'test' subdir of input directory)")
     # Argument for test size
-    parser.add_argument('-s', '--split', type=float, default=0.15, help='Test set size (default: 0.15 for 85% train, 15% test)')
+    parser.add_argument('-s', '--split', type=float, default=0.15, help='Test set size (default: 0.15 for 85%% train, 15%% test)')
     # Optional flag for no subdirectories (if subjects are files)
     parser.add_argument('--no-subdirs', action='store_true', help='Use this flag if the subjects are files and not in individual subdirectories')
     # Flag to save JSON files with subject IDs
