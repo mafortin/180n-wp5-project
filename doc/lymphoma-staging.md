@@ -56,7 +56,8 @@ python3 organ_seg/run_total_segmentator.py -i /home/marcantf/180n/results/test-s
 ---
 
 #### 3) Combine both the organ and body segmentation into one label map running the following command line:
-	- **Note**: Reactivate the `180n` python virtual environment now, we don't need the `totalseg` one.
+
+- **Note**: Reactivate the `180n` python virtual environment now, we don't need the `totalseg` one.
 
 ```
 python3 organ_seg/merge_total_and_body_mr.py -i XX [--onedir]
