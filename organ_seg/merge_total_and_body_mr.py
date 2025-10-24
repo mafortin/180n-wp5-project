@@ -151,9 +151,6 @@ def identify_and_label_legs(data, trunc_label=101, extremities_label=102,
 
 
 
-
-
-
 def identify_and_label_arms(data, trunc_label=101, extremities_label=102,
                             left_arm_label=104, right_arm_label=105):
     """
