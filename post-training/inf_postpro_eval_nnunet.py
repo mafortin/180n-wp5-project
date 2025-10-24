@@ -23,7 +23,7 @@ def run_inference(dataset_id, input_dir, output_dir, config, trainer, plan, fold
                             "-nps", str(num_pr)
                         ]
     print(f"Running inference with the following command: {' '.join(inference_command)}")
-    #subprocess.run(inference_command)
+    subprocess.run(inference_command)
     end_time = time.time()
     duration = end_time - start_time
     print(f"Inference completed in {duration:.2f} seconds.")

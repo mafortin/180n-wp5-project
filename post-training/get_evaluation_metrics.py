@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import PrecisionRecallDisplay, RocCurveDisplay
 
 # Provide the full path to the JSON file containing the PICAI metrics
-path2picai_metrics = "/home/marcantf/Data/nnunet/results/Dataset016_180n_lesion/my_nnUNetTrainer_baseLR_1e4__UNet_ResEncL__3d_fullres/inference/picai_metrics.json"
+path2picai_metrics = "/home/marcantf/180n/results/test-lesion-segs/baselr-5e5/picai_eval.json"
 show_plots = True #False
 
 # Fetch the metrics
