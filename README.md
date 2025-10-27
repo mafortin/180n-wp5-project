@@ -1,10 +1,8 @@
-# Project Title
+# 180N-WP5: Lymphoma segmentation
 
-Lymphoma lesion identification with PET-MR images and Deep Learning (LIPID). 
+Lymphoma lesion identification and segmentation with PET-MR images and Deep Learning.
 
-## Features
-
-
+Author: Marc-Antoine Fortin
 
 
 ## Installation
@@ -19,18 +17,20 @@ conda create --name 180n-wp5 python=3.10
 ```
 - `180n-wp5` in the above command line is the name of the virtual environment and can be replaced by anything else if preferred.
 - Once your python virtual environment is created, you need to execute the remaining steps inside this virtual environment. Thus, activate the virtual environment by typing:
+
 ```bash
-conda activate gouhfi
+conda activate 180n-wp5
 ```
 
-### Step 2: Install PyTorch >2.0.0 and <2.6.0
+### Step 2: Install PyTorch (>2.0.0 and <2.6.0)
 
-- Follow the instructions on the [PyTorch website](https://pytorch.org/get-started/locally/) to install the stable PyTorch version based on your OS (Linux, Mac or Windows), package manager (choose `pip` if unsure), language (Python) and compute platform (CUDA 12.8 was tested for this project, but your system requirements might be different).
-- For Ubuntu OS with the latest stable PyTorch version through `pip` with at least CUDA 12.8, run this command:
-```
-pip3 install torch torchvision
-```
+Follow the instructions on the [official PyTorch website](https://pytorch.org/get-started/locally/) and choose your OS, Python and CUDA version.
 
+If you have an NVIDIA GPU and want CUDA support (recommended), install PyTorch with CUDA 12.x, for example:
+
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+```
 
 ### Step 3: Install TotalSegmentator
 
@@ -43,46 +43,21 @@ pip install TotalSegmentator
 ### Step 4: Clone & install the repository locally
 
 ```bash
-cd path/where/you/want/gouhfi/to/be/installed
-git clone https://github.com/mafortin/GOUHFI.git
-cd GOUHFI
-pip install -e .
+cd path/where/you/want/the/project/to/be/installed
+git clone https://github.com/mafortin/180n-wp5-project.git
+cd 180n-wp5-project
 ```
 
-- The `pip install -e .` command allows you to install the GOUHFI repository in "editable" mode where you can modify the different scripts to your liking.
-- **Note**: If you do not have `git` installed on your system, you can manually copy it.
-
-### Step 4: Download the trained model weights
-
-1) A Zenodo link to the trained model weights is included in the repository in the `trained_model/gouhfi-trained-model-weights.md` file or simply with this [link](https://zenodo.org/records/15255556). This might require you to have a Zenodo account (free).
-2) Move this `GOUHFI.zip` in the `trained-model` folder before unzipping it.
-
-### Step 5: Unzip the `GOUHFI.zip`
-
-- To unzip `GOUHFI.zip`, use the following command:
-```bash
-cd trained_model/
-unzip GOUHFI.zip
-```
-
-- Once unzipped, you should have a folder called `Dataset014_gouhfi` with all trained folds and related files in the `trained_model` folder.
-
-### Step 6: S
+- **Note**: If you do not have `git` installed on your system, you can manually download the zipped repository with the green code button at the top of the repository.
 
 
-```bash
-source ~/.bashrc
-echo $GOUHFI_HOME
-```
-- where `~/.bashrc` can be `~/.zshrc`.
+### Step 5: nnUNet installation
 
-
-### Step 7: Test the installation
-    ```
+Since the `TotalSegmentator` uses the nnUNet framework, I would believe that you don't need to also install the `nnUNet` framework by itself in order to run new trainings or inference, but I haven't tried myself. Thus, I expect this to current installation to be working, but I haven't thoroughly tested it. 
 
 ## Usage
 
-See the two documentation files in `/doc/` for the lesion seg and staging.
+See the two documentation files in `/doc/` for the lesion segmentation and staging scripts.
 
 
 ## License
